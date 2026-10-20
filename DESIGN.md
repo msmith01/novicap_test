@@ -2,9 +2,9 @@
 
 ## Request path
 
-FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. Each request gets a request ID, is authenticated by API key (a stopgap), and is persisted before the decision is returned; if the write fails the service returns 503 rather than an unrecorded decision. Logs are JSON metadata only (request ID, status, latency, decision, factors), never request values. The ruleset carries an explicit version string. The endpoint is still a working slice: no migrations, production identity, or monitoring yet.
+FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. Each request gets a request ID, is authenticated by API key (a stopgap), and is persisted before the decision is returned; if the write fails the service returns 503 rather than an unrecorded decision. Logs are JSON metadata only (request ID, status, latency, decision, factors), never request values. The ruleset carries an explicit version string. Schema changes go through Alembic migrations applied at startup. The endpoint is still a working slice: no production identity or monitoring yet.
 
-The checked-in Dockerfile packages the API on port 8000 and runs as a non-root user. Build and run it locally with `docker build -t working-capital-risk .` and `docker run --rm -p 8000:8000 working-capital-risk`, then try `/docs`. The build context excludes the raw data and notebook. For production, publish the image to ECR and run it on ECS Fargate behind authenticated HTTPS. Keep RDS Postgres private to the service. No AWS account is needed to agree on this design; provisioning comes later.
+The checked-in Dockerfile packages the API on port 8000 and runs as a non-root user. Build and run it locally with `docker build -t working-capital-risk .` and `docker run --rm -p 8000:8000 -e API_KEYS=dev-key working-capital-risk` (or `docker compose up --build` for the service with Postgres), then try `/docs`. The build context excludes the raw data and notebook. For production, publish the image to ECR and run it on ECS Fargate behind authenticated HTTPS. Keep RDS Postgres private to the service. No AWS account is needed to agree on this design; provisioning comes later.
 
 ## Data and decisions
 
@@ -19,3 +19,12 @@ Give every ruleset an explicit version. Before release, replay a representative 
 Track request volume and latency, 4xx/5xx errors, validation rejections, decision and risk-factor rates, and shifts in input distributions. Break these down by source and relevant applicant groups, and alert on changes against a baseline. These signals can show operational faults or input drift, but they cannot establish repayment predictive quality. Evaluate that when repayment outcomes mature.
 
 When Data Science changes the formula, replace and test the ruleset while keeping the HTTP contract stable. Replay, compare, shadow, and canary it as above. The storage and request boundaries stay the same.
+
+## Left out, and what I would do next
+
+- **Duplicate application IDs:** four IDs repeat in the export; I stored every submission under an internal ID and did not deduplicate. Ask the source owner whether repeats are duplicates or revisions (see OPEN_QUESTIONS.md).
+- **Production identity:** API keys are a stopgap. Move to the platform's identity and keep secrets in a secrets manager.
+- **Monitoring:** logs are structured, but there are no metrics, dashboards or alerts yet. Add request, latency, error, decision and input-drift metrics with baselines.
+- **AWS:** ECR, ECS Fargate and RDS are designed, not provisioned. No CI/CD pipeline yet.
+- **Release tooling:** replay, shadow and canary are described, not built. Start with a replay script over the stored score history.
+- **Data issues:** the service rejects bad inputs (422) rather than imputing. Cleaning the export (dates, sector and region labels, missing EBITDA) belongs in an ingestion step I did not build.
