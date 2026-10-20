@@ -6,3 +6,7 @@ __pycache__/
 .env
 data/
 *.db
+ops/alertmanager/discord_webhook
+ops/prometheus/api_key.local
+.terraform/
+*.tfstate*

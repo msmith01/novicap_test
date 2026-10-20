@@ -1,22 +1,26 @@
-# Routing only. The webhook is a placeholder: point it at Slack, PagerDuty or an SNS bridge.
+# Alerts are posted to a Discord channel. The webhook URL is a secret (anyone holding it can post),
+# so it is read from ops/alertmanager/discord_webhook, which is git-ignored. Copy
+# discord_webhook.example to discord_webhook and put the real URL in it.
 # severity=page alerts repeat every 30 minutes; severity=ticket alerts every 12 hours.
 route:
-  receiver: default
+  receiver: discord-ticket
   group_by: [alertname]
   group_wait: 10s
   routes:
     - matchers: [severity="page"]
-      receiver: oncall
+      receiver: discord-page
       repeat_interval: 30m
     - matchers: [severity="ticket"]
-      receiver: default
+      receiver: discord-ticket
       repeat_interval: 12h
 receivers:
-  - name: default
-    webhook_configs:
-      - url: http://host.docker.internal:9094/ticket
+  - name: discord-ticket
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/discord_webhook
         send_resolved: true
-  - name: oncall
-    webhook_configs:
-      - url: http://host.docker.internal:9094/page
+        title: 'TICKET {{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+  - name: discord-page
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/discord_webhook
         send_resolved: true
+        title: 'PAGE {{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'

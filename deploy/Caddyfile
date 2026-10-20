@@ -1,0 +1,6 @@
+# SITE_ADDRESS=:80 serves plain HTTP on the server's IP (fine for a demo).
+# Set SITE_ADDRESS=risk.example.com (a DNS name pointing at the VPS) and Caddy obtains a
+# Let's Encrypt certificate automatically and serves HTTPS.
+{$SITE_ADDRESS::80} {
+	reverse_proxy api:8000
+}
