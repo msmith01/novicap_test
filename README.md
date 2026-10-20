@@ -39,7 +39,7 @@ docker build -t working-capital-risk .
 docker run --rm -p 8000:8000 -e API_KEYS=dev-key working-capital-risk
 ```
 
-Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/`, `analysis/`, and the brief. Docker was installed in the development environment, but its engine was unavailable, so an image build has not been verified.
+Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/`, `analysis/`, and the brief. The image build and the `docker compose up` stack with Postgres were verified on 2026-10-20. If the build fails with `error getting credentials` in a non-interactive shell, pull `python:3.12-slim` and `postgres:16-alpine` first with `DOCKER_CONFIG` pointing at a folder containing `{}` in `config.json`, then build with `DOCKER_BUILDKIT=0`.
 
 ## Project map
 
@@ -59,13 +59,12 @@ Done: automated tests (`python -m pip install -r requirements-dev.txt`, then `py
 Still open:
 
 1. **Duplicate application IDs** need an answer from the data source owner; see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Do not deduplicate until then.
-2. **Docker build and real Postgres**: the image build is still unverified. Docker Desktop was started on 2026-10-20 but its engine hung and no build completed. Restart it, then run `docker compose up --build`, hit `/healthz` and `/score`, and confirm rows land in Postgres (tests use SQLite only).
-3. **Production auth and monitoring**: API keys are a stopgap; move to the platform's identity (and store keys in a secrets manager). Add metrics, alerts and dashboards on top of the logs.
-4. **Private remote repository**: not created; local commits only. Needs your go-ahead.
-5. **AWS** (ECR, ECS Fargate, RDS): not provisioned; do this only when ready to deploy.
+2. **Production auth and monitoring**: API keys are a stopgap; move to the platform's identity (and store keys in a secrets manager). Add metrics, alerts and dashboards on top of the logs.
+3. **Private remote repository**: not created; local commits only. Needs your go-ahead.
+4. **AWS** (ECR, ECS Fargate, RDS): not provisioned; do this only when ready to deploy.
 
-## Last verified
+P26-10-20 (later): Docker image built and the compose stack ran against Postgres 16: `/healthz` 200, `/score` 200 with a row in `score_history`, missing key 401, Alembic at revision `0001`.
 
 2026-10-20: 29 pytest tests pass (migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
 
-Earlier: the API passed FastAPI TestClient checks and a live local HTTP check: valid requests returned 200 and invalid employee counts returned 422. The notebook's Python cells ran from Python, and key profile totals were asserted; their outputs are not saved in the notebook. Docker image build remains unverified because the Docker engine was unavailable. No AWS resources have been provisioned.
+Earlier: the API passed FastAPI TestClient checks and a live local HTTP check: valid requests returned 200 and invalid employee counts returned 422. The notebook's Python cells ran from Python, and key profile totals were asserted; their outputs are not saved in the notebook.  No AWS resources have been provisioned.
