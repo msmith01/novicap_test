@@ -6,6 +6,7 @@ Postgres in deployment (DATABASE_URL=postgresql+psycopg://...); SQLite locally.
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -47,6 +48,18 @@ class ScoreRecord(Base):
     scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+def migrate(engine) -> None:
+    """Bring the schema to the latest Alembic revision (a no-op when already current)."""
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config()
+    config.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+
 def make_session_factory(url: str | None = None) -> sessionmaker[Session]:
     url = url or os.environ.get("DATABASE_URL", "sqlite:///./scores.db")
     kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {"pool_pre_ping": True}
@@ -55,7 +68,7 @@ def make_session_factory(url: str | None = None) -> sessionmaker[Session]:
 
         kwargs["poolclass"] = StaticPool
     engine = create_engine(url, **kwargs)
-    Base.metadata.create_all(engine)  # TODO: replace with migrations (Alembic) before production
+    migrate(engine)
     return sessionmaker(engine, expire_on_commit=False)
 
 

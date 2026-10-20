@@ -165,3 +165,17 @@ def test_logs_exclude_request_values(caplog):
     text = caplog.text
     assert "SECRET-ID" not in text and "987654" not in text
     assert "request_id" in text and "latency_ms" in text
+
+
+def test_migration_matches_models_and_is_idempotent(tmp_path):
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+    from sqlalchemy import create_engine
+
+    from prototype.storage import Base, migrate
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'm.db'}")
+    migrate(engine)
+    migrate(engine)
+    with engine.connect() as conn:
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
