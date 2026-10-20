@@ -20,7 +20,7 @@ $env:API_KEYS = "dev-key"
 python -m uvicorn prototype.risk_scoring_prototype:app --reload
 ```
 
-Scores are stored in a local SQLite file (`scores.db`) unless `DATABASE_URL` points at Postgres (`postgresql+psycopg://user:pass@host/db`). `/score` requires an `X-API-Key` header matching one of the comma-separated `API_KEYS`; with none configured it returns 503. `GET /healthz` is open.
+Scores are stored in a local SQLite file (`scores.db`) unless `DATABASE_URL` points at Postgres (`postgresql+psycopg://user:pass@host/db`). `/score` requires an `X-API-Key` header matching one of the comma-separated `API_KEYS`; with none configured it returns 503. `GET /healthz` is open. `GET /metrics` (API key required) serves Prometheus metrics.
 
 Open `http://127.0.0.1:8000/docs` (use Authorize with the key) to try the API. Example request:
 
@@ -59,7 +59,7 @@ Done: automated tests (`python -m pip install -r requirements-dev.txt`, then `py
 Still open:
 
 1. **Duplicate application IDs** need an answer from the data source owner; see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Do not deduplicate until then.
-2. **Production auth and monitoring**: API keys are a stopgap; move to the platform's identity (and store keys in a secrets manager). Add metrics, alerts and dashboards on top of the logs.
+2. **Production auth and monitoring**: API keys are a stopgap; move to the platform's identity (and store keys in a secrets manager). `/metrics` exists; still needed: collection, dashboards and alerts.
 3. **Private remote repository**: not created; local commits only. Needs your go-ahead.
 4. **AWS** (ECR, ECS Fargate, RDS): not provisioned; do this only when ready to deploy.
 
@@ -67,6 +67,6 @@ Still open:
 
 2026-10-20 (later): Docker image built and the compose stack ran against Postgres 16: `/healthz` 200, `/score` 200 with a row in `score_history`, missing key 401, Alembic at revision `0001`.
 
-2026-10-20: 29 pytest tests pass (migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
+2026-10-20: 32 pytest tests pass (metrics, migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
 
 Earlier: the API passed FastAPI TestClient checks and a live local HTTP check: valid requests returned 200 and invalid employee counts returned 422. The notebook's Python cells ran from Python, and key profile totals were asserted; their outputs are not saved in the notebook.  No AWS resources have been provisioned.

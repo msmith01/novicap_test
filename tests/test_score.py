@@ -179,3 +179,42 @@ def test_migration_matches_models_and_is_idempotent(tmp_path):
     migrate(engine)
     with engine.connect() as conn:
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+
+
+def _metrics_client():
+    app = create_app(session_factory=make_session_factory("sqlite://"), api_keys=[KEY], image_version="t")
+    return TestClient(app, headers={"X-API-Key": KEY})
+
+
+def test_metrics_count_decisions_and_errors_without_leaking_values():
+    c = _metrics_client()
+    c.post("/score", json=payload(application_id="SECRET-ID-1"))
+    c.post("/score", json=payload(employees=1000))  # low revenue per employee -> high_risk
+    c.post("/score", json=payload(employees=0))  # 422
+    text = c.get("/metrics").text
+    assert f'score_decisions_total{{decision="low_risk",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
+    assert f'score_decisions_total{{decision="high_risk",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
+    assert f'score_risk_factors_total{{factor="revenue_per_employee_below_floor",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
+    assert 'http_requests_total{method="POST",route="/score",status="422"} 1.0' in text
+    assert "input_revenue_per_employee_count 2.0" in text
+    assert "SECRET-ID-1" not in text
+
+
+def test_metrics_requires_api_key():
+    c = _metrics_client()
+    assert c.get("/metrics", headers={"X-API-Key": "wrong"}).status_code == 401
+
+
+def test_metrics_count_persistence_failure():
+    from sqlalchemy.exc import OperationalError
+
+    c = _metrics_client()
+    import prototype.risk_scoring_prototype as mod
+
+    original = mod.save_score
+    mod.save_score = lambda *a, **k: (_ for _ in ()).throw(OperationalError("x", {}, Exception("db")))
+    try:
+        assert c.post("/score", json=payload()).status_code == 503
+    finally:
+        mod.save_score = original
+    assert "score_persistence_failures_total 1.0" in c.get("/metrics").text

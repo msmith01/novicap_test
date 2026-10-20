@@ -19,7 +19,8 @@ from typing import Callable, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, generate_latest
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -30,6 +31,9 @@ from prototype.storage import make_session_factory, save_score
 RULESET_VERSION = "2026-10-v1"  # bump on any change to the rules or thresholds below
 REVENUE_PER_EMPLOYEE_RISK_FLOOR = 40_000  # below this, flag as risky
 REQUESTED_TO_REVENUE_RISK_CEILING = 0.20  # above this, flag as risky
+
+REVENUE_PER_EMPLOYEE_BUCKETS = (10_000, 20_000, 40_000, 60_000, 100_000, 250_000, 1_000_000)
+REQUESTED_TO_REVENUE_BUCKETS = (0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0)
 
 logger = logging.getLogger("risk_scoring")
 
@@ -79,6 +83,36 @@ def _log(**fields) -> None:
     logger.info(json.dumps(fields, default=str))
 
 
+class Metrics:
+    """Prometheus metrics on a per-app registry. Aggregates only: no identifiers or raw values."""
+
+    def __init__(self) -> None:
+        self.registry = CollectorRegistry()
+        self.requests = Counter(
+            "http_requests_total", "HTTP requests", ["method", "route", "status"], registry=self.registry
+        )
+        self.latency = Histogram(
+            "http_request_duration_seconds", "Request latency", ["route"], registry=self.registry
+        )
+        self.decisions = Counter(
+            "score_decisions_total", "Decisions returned", ["decision", "ruleset_version"], registry=self.registry
+        )
+        self.risk_factors = Counter(
+            "score_risk_factors_total", "Triggered risk factors", ["factor", "ruleset_version"], registry=self.registry
+        )
+        self.persistence_failures = Counter(
+            "score_persistence_failures_total", "Scores not recorded", registry=self.registry
+        )
+        self.revenue_per_employee = Histogram(
+            "input_revenue_per_employee", "Input drift: revenue per employee",
+            buckets=REVENUE_PER_EMPLOYEE_BUCKETS, registry=self.registry,
+        )
+        self.requested_to_revenue = Histogram(
+            "input_requested_to_revenue", "Input drift: requested amount / revenue",
+            buckets=REQUESTED_TO_REVENUE_BUCKETS, registry=self.registry,
+        )
+
+
 def create_app(
     session_factory: sessionmaker[Session] | None = None,
     api_keys: list[str] | None = None,
@@ -92,6 +126,7 @@ def create_app(
     ]
 
     app = FastAPI(title="Working Capital Risk Scoring")
+    metrics = Metrics()
 
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         if not keys:
@@ -114,13 +149,17 @@ def create_app(
             response.headers["X-Request-ID"] = request.state.request_id
             return response
         finally:
+            elapsed = time.perf_counter() - started
+            route = getattr(request.scope.get("route"), "path", "unmatched")  # template, not raw path
+            metrics.requests.labels(request.method, route, str(status)).inc()
+            metrics.latency.labels(route).observe(elapsed)
             _log(
                 event="request",
                 request_id=request.state.request_id,
                 method=request.method,
                 path=request.url.path,
                 status=status,
-                latency_ms=round((time.perf_counter() - started) * 1000, 1),
+                latency_ms=round(elapsed * 1000, 1),
                 decision=getattr(request.state, "decision", None),
                 risk_factors=getattr(request.state, "risk_factors", None),
                 ruleset_version=RULESET_VERSION if hasattr(request.state, "decision") else None,
@@ -136,6 +175,10 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict:
         return {"status": "ok"}
+
+    @app.get("/metrics", dependencies=[Depends(require_api_key)], include_in_schema=False)
+    def metrics_endpoint() -> Response:
+        return Response(generate_latest(metrics.registry), media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/score", response_model=ScoreResponse, dependencies=[Depends(require_api_key)])
     def score(request: ScoreRequest, http_request: Request, session: Session = Depends(get_session)):
@@ -157,8 +200,14 @@ def create_app(
         except SQLAlchemyError as exc:
             # Never return a decision that was not recorded. Log the type only:
             # SQLAlchemy error text can include bound parameter values.
+            metrics.persistence_failures.inc()
             _log(event="persistence_failed", request_id=result.request_id, error=type(exc).__name__)
             raise HTTPException(status_code=503, detail="could not record score; retry")
+        metrics.decisions.labels(result.decision, RULESET_VERSION).inc()
+        for factor in result.risk_factors:
+            metrics.risk_factors.labels(factor, RULESET_VERSION).inc()
+        metrics.revenue_per_employee.observe(request.annual_revenue / request.employees)
+        metrics.requested_to_revenue.observe(request.requested_amount / request.annual_revenue)
         http_request.state.decision = result.decision
         http_request.state.risk_factors = result.risk_factors
         return result

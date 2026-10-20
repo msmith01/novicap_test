@@ -2,7 +2,7 @@
 
 ## Request path
 
-FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. Each request gets a request ID, is authenticated by API key (a stopgap), and is persisted before the decision is returned; if the write fails the service returns 503 rather than an unrecorded decision. Logs are JSON metadata only (request ID, status, latency, decision, factors), never request values. The ruleset carries an explicit version string. Schema changes go through Alembic migrations applied at startup. The endpoint is still a working slice: no production identity or monitoring yet.
+FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. Each request gets a request ID, is authenticated by API key (a stopgap), and is persisted before the decision is returned; if the write fails the service returns 503 rather than an unrecorded decision. Logs are JSON metadata only (request ID, status, latency, decision, factors), never request values. The ruleset carries an explicit version string. Schema changes go through Alembic migrations applied at startup. The endpoint is still a working slice: no production identity yet. `GET /metrics` (API key required) exposes Prometheus counters and histograms: requests and latency by route and status, decisions and risk factors by ruleset version, persistence failures, and aggregate input-ratio histograms for drift; nothing identifying or raw.
 
 The checked-in Dockerfile packages the API on port 8000 and runs as a non-root user. Build and run it locally with `docker build -t working-capital-risk .` and `docker run --rm -p 8000:8000 -e API_KEYS=dev-key working-capital-risk` (or `docker compose up --build` for the service with Postgres), then try `/docs`. The build context excludes the raw data and notebook. For production, publish the image to ECR and run it on ECS Fargate behind authenticated HTTPS. Keep RDS Postgres private to the service. No AWS account is needed to agree on this design; provisioning comes later.
 
@@ -24,7 +24,7 @@ When Data Science changes the formula, replace and test the ruleset while keepin
 
 - **Duplicate application IDs:** four IDs repeat in the export; I stored every submission under an internal ID and did not deduplicate. Ask the source owner whether repeats are duplicates or revisions (see OPEN_QUESTIONS.md).
 - **Production identity:** API keys are a stopgap. Move to the platform's identity and keep secrets in a secrets manager.
-- **Monitoring:** logs are structured, but there are no metrics, dashboards or alerts yet. Add request, latency, error, decision and input-drift metrics with baselines.
+- **Monitoring:** the metrics exist, but nothing scrapes them yet. Add Prometheus/CloudWatch collection, dashboards, and alerts against baselines, with breakdowns by source system (needs `source_system` in the request).
 - **AWS:** ECR, ECS Fargate and RDS are designed, not provisioned. No CI/CD pipeline yet.
 - **Release tooling:** replay, shadow and canary are described, not built. Start with a replay script over the stored score history.
 - **Data issues:** the service rejects bad inputs (422) rather than imputing. Cleaning the export (dates, sector and region labels, missing EBITDA) belongs in an ingestion step I did not build.
