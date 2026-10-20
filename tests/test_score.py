@@ -238,3 +238,26 @@ def test_replay_counts_outcomes_and_reasons_without_values(tmp_path, capsys):
     assert "employees:int_type: 1" in text and "employees:greater_than: 1" in text
     assert "TAXSECRET" not in text and "TAXSECRET" not in out.read_text()
     assert out.read_text().splitlines()[1].startswith("R1,low_risk")
+
+
+def test_replay_from_db_reports_changed_decisions(tmp_path, capsys):
+    from prototype.replay import main
+    from prototype.storage import make_session_factory, save_score
+
+    url = f"sqlite:///{tmp_path / 's.db'}"
+    with make_session_factory(url)() as session:
+        for rid, decision in (("a", "low_risk"), ("b", "low_risk")):
+            save_score(
+                session, source_application_id=rid, employees=10, annual_revenue=1_000_000,
+                requested_amount=100_000, request_id=rid, decision=decision, risk_factors=[],
+                ruleset_version="old", image_version="t",
+            )
+        save_score(
+            session, source_application_id="c", employees=10, annual_revenue=1_000_000,
+            requested_amount=100_000, request_id="c", decision="high_risk", risk_factors=[],
+            ruleset_version="old", image_version="t",
+        )
+    assert main(["--from-db", url]) == 0
+    text = capsys.readouterr().out
+    assert "3 stored scores re-scored, 1 decisions changed" in text
+    assert "high_risk -> low_risk: 1" in text

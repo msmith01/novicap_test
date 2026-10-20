@@ -28,5 +28,5 @@ When Data Science changes the formula, replace and test the ruleset while keepin
 - **Production identity:** API keys are a stopgap. Move to the platform's identity and keep secrets in a secrets manager.
 - **Monitoring:** the metrics exist, but nothing scrapes them yet. Add Prometheus/CloudWatch collection, dashboards, and alerts against baselines, with breakdowns by source system (needs `source_system` in the request).
 - **AWS:** ECR, ECS Fargate and RDS are designed, not provisioned. No CI/CD pipeline yet.
-- **Release tooling:** `prototype.replay` covers replay and diffing over a CSV; shadow and canary are described, not built, and replay does not yet read the stored score history.
+- **Release tooling:** `prototype.replay` covers replay and diffing over a CSV, and `--from-db` re-scores stored applications and reports changed decisions; shadow and canary are described, not built.
 - **Data issues:** the service rejects bad inputs (422) rather than imputing. Cleaning the export (dates, sector and region labels, missing EBITDA) belongs in an ingestion step I did not build.
