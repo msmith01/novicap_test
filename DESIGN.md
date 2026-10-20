@@ -8,6 +8,8 @@ The checked-in Dockerfile packages the API on port 8000 and runs as a non-root u
 
 ## Data and decisions
 
+The prototype had never seen the full export, so `python -m prototype.replay data/raw_applications.csv` runs every row through the same validation and scorer as the API. Result (ruleset 2026-10-v1): of 196 rows, 158 low risk, 13 high risk, 25 rejected (22 missing employee count, 3 zero or negative). The service rejects such input with 422 instead of imputing, so a missing value is never silently scored; whether to repair or request it is for the source owner. The same tool, with `--out`, produces per-row results to diff between rulesets before release.
+
 Keep each source CSV as an immutable, encrypted, versioned object in S3. Use Postgres for operational applications and an append-only score history. Each score should capture the validated inputs, decision, risk factors, ruleset and image versions, timestamp, and request ID. This makes a decision reproducible even after rules change.
 
 The export has repeated application IDs, so do not treat that source field as a unique key until the source owner explains whether repeats are revisions or duplicate submissions. Assign an internal application ID and retain the source ID. Restrict access to `tax_id`; exclude it and full financial payloads from logs.
@@ -26,5 +28,5 @@ When Data Science changes the formula, replace and test the ruleset while keepin
 - **Production identity:** API keys are a stopgap. Move to the platform's identity and keep secrets in a secrets manager.
 - **Monitoring:** the metrics exist, but nothing scrapes them yet. Add Prometheus/CloudWatch collection, dashboards, and alerts against baselines, with breakdowns by source system (needs `source_system` in the request).
 - **AWS:** ECR, ECS Fargate and RDS are designed, not provisioned. No CI/CD pipeline yet.
-- **Release tooling:** replay, shadow and canary are described, not built. Start with a replay script over the stored score history.
+- **Release tooling:** `prototype.replay` covers replay and diffing over a CSV; shadow and canary are described, not built, and replay does not yet read the stored score history.
 - **Data issues:** the service rejects bad inputs (422) rather than imputing. Cleaning the export (dates, sector and region labels, missing EBITDA) belongs in an ingestion step I did not build.

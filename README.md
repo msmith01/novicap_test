@@ -46,6 +46,7 @@ Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/
 - `prototype/risk_scoring_prototype.py`: FastAPI app, auth, logging, request model, and scoring rules.
 - `prototype/storage.py`: SQLAlchemy models and `save_score`; applies Alembic migrations on startup.
 - `prototype/migrations/`: Alembic migrations (add one per schema change; `alembic -x url=<db> upgrade head` also works from the CLI).
+- `prototype/replay.py`: replays a CSV through the API's validation and scorer; prints aggregate counts and optionally writes per-row results.
 - `tests/`: pytest suite.
 - `data/raw_applications.csv`: source export; contains sensitive identifiers, do not upload or log it.
 - `analysis/data_exploration.ipynb`: brief sections 1-4 and the exploratory profile.
@@ -67,6 +68,6 @@ Still open:
 
 2026-10-20 (later): Docker image built and the compose stack ran against Postgres 16: `/healthz` 200, `/score` 200 with a row in `score_history`, missing key 401, Alembic at revision `0001`.
 
-2026-10-20: 32 pytest tests pass (metrics, migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
+2026-10-20: 33 pytest tests pass (replay, metrics, migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
 
 Earlier: the API passed FastAPI TestClient checks and a live local HTTP check: valid requests returned 200 and invalid employee counts returned 422. The notebook's Python cells ran from Python, and key profile totals were asserted; their outputs are not saved in the notebook.  No AWS resources have been provisioned.

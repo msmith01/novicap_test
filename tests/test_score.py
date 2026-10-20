@@ -218,3 +218,23 @@ def test_metrics_count_persistence_failure():
     finally:
         mod.save_score = original
     assert "score_persistence_failures_total 1.0" in c.get("/metrics").text
+
+
+def test_replay_counts_outcomes_and_reasons_without_values(tmp_path, capsys):
+    from prototype.replay import main
+
+    src = tmp_path / "in.csv"
+    src.write_text(
+        "application_id,tax_id,employees,annual_revenue,requested_amount\n"
+        "R1,TAXSECRET1,10,1000000,100000\n"
+        "R2,TAXSECRET2,1000,1000000,500000\n"
+        "R3,TAXSECRET3,null,1000000,100000\n"
+        "R4,TAXSECRET4,-1,1000000,100000\n"
+    )
+    out = tmp_path / "out.csv"
+    assert main([str(src), "--out", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "low_risk: 1" in text and "high_risk: 1" in text and "rejected: 2" in text
+    assert "employees:int_type: 1" in text and "employees:greater_than: 1" in text
+    assert "TAXSECRET" not in text and "TAXSECRET" not in out.read_text()
+    assert out.read_text().splitlines()[1].startswith("R1,low_risk")
