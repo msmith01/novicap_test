@@ -272,3 +272,23 @@ def test_source_system_is_stored_and_labelled_with_bounded_cardinality():
     assert 'decision="low_risk",ruleset_version="%s",source_system="legacy_crm"} 1.0' % RULESET_VERSION in text
     assert 'source_system="other"} 1.0' in text
     assert "made_up_source" not in text
+
+
+def test_ingest_normalises_flags_and_dedupes_without_imputing(tmp_path, capsys):
+    import csv
+
+    from prototype.ingest import main
+
+    header = "application_id,tax_id,sector,region,incorporation_date,employees,annual_revenue,annual_ebitda,requested_amount,source_system\n"
+    row = "R1,H-123,Food manuf.,Catalunya,03/02/2010,10,1000000,n/a,100000,legacy_crm\n"
+    src = tmp_path / "in.csv"
+    src.write_text(header + row + row + "R2,H2,Retail ,Madrid,2030-01-01,null,50000,1,100,manual_entry\n")
+    out = tmp_path / "out.csv"
+    assert main([str(src), "--out", str(out)]) == 0
+    assert "exact_duplicates_dropped: 1" in capsys.readouterr().out
+    rows = list(csv.DictReader(out.open()))
+    assert len(rows) == 2
+    assert rows[0]["incorporation_date"] == "2010-02-03" and rows[0]["tax_id"] == "H123"
+    assert rows[0]["sector"] == "food_manufacturing" and rows[0]["region"] == "cataluna"
+    assert "missing_ebitda" in rows[0]["flags"]
+    assert rows[1]["employees"] == "" and "bad_date" in rows[1]["flags"]
