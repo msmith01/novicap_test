@@ -1,0 +1,9 @@
+.git/
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+data/
+analysis/
+Brief.pdf
