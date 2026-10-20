@@ -63,7 +63,9 @@ Still open:
 3. **Private remote repository**: not created; local commits only. Needs your go-ahead.
 4. **AWS** (ECR, ECS Fargate, RDS): not provisioned; do this only when ready to deploy.
 
-P26-10-20 (later): Docker image built and the compose stack ran against Postgres 16: `/healthz` 200, `/score` 200 with a row in `score_history`, missing key 401, Alembic at revision `0001`.
+## Last verified
+
+2026-10-20 (later): Docker image built and the compose stack ran against Postgres 16: `/healthz` 200, `/score` 200 with a row in `score_history`, missing key 401, Alembic at revision `0001`.
 
 2026-10-20: 29 pytest tests pass (migration/model drift check, scoring thresholds, validation, persistence, auth, 503 on write failure, log privacy). Testing found that a `NaN` payload caused an HTTP 500 (the 422 error body echoed the unserializable input); fixed with a validation handler that also omits submitted values from error bodies.
 
