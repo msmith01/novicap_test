@@ -1,0 +1,22 @@
+# Local monitoring stack. /metrics requires the API key; the throwaway key below matches the
+# API_KEYS value used in the local demo. In deployment, mount the key from a secrets manager.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: risk-scoring
+    metrics_path: /metrics
+    http_headers:
+      X-API-Key:
+        files: [/etc/prometheus/api_key]
+    static_configs:
+      - targets: ["api:8000"]

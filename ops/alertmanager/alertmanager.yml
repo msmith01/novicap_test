@@ -1,0 +1,22 @@
+# Routing only. The webhook is a placeholder: point it at Slack, PagerDuty or an SNS bridge.
+# severity=page alerts repeat every 30 minutes; severity=ticket alerts every 12 hours.
+route:
+  receiver: default
+  group_by: [alertname]
+  group_wait: 10s
+  routes:
+    - matchers: [severity="page"]
+      receiver: oncall
+      repeat_interval: 30m
+    - matchers: [severity="ticket"]
+      receiver: default
+      repeat_interval: 12h
+receivers:
+  - name: default
+    webhook_configs:
+      - url: http://host.docker.internal:9094/ticket
+        send_resolved: true
+  - name: oncall
+    webhook_configs:
+      - url: http://host.docker.internal:9094/page
+        send_resolved: true

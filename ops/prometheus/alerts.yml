@@ -1,0 +1,64 @@
+# Alerts that need no repayment outcomes: they watch service health, rule behaviour,
+# input drift and (during a rollout) disagreement between the active and shadow rulesets.
+groups:
+  - name: risk-scoring
+    rules:
+      - alert: ScoringErrorRateHigh
+        expr: |
+          sum(rate(http_requests_total{route="/score",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total{route="/score"}[5m])), 1e-9) > 0.02
+        for: 5m
+        labels: {severity: page}
+        annotations: {summary: "More than 2% of /score requests are failing (5xx)"}
+
+      - alert: ScoreNotRecorded
+        expr: increase(score_persistence_failures_total[5m]) > 0
+        labels: {severity: page}
+        annotations: {summary: "Decisions could not be recorded; callers receive 503"}
+
+      - alert: ScoringTrafficDropped
+        expr: |
+          sum(rate(http_requests_total{route="/score"}[15m])) < 0.1 * sum(rate(http_requests_total{route="/score"}[15m] offset 1d))
+          and sum(rate(http_requests_total{route="/score"}[15m] offset 1d)) > 0
+        for: 15m
+        labels: {severity: ticket}
+        annotations: {summary: "/score traffic is under 10% of the same time yesterday"}
+
+      - alert: ValidationRejectionSpike
+        expr: |
+          sum(rate(http_requests_total{route="/score",status="422"}[1h]))
+            / clamp_min(sum(rate(http_requests_total{route="/score"}[1h])), 1e-9) > 0.3
+        for: 15m
+        labels: {severity: ticket}
+        annotations: {summary: "Over 30% of requests rejected as invalid: likely an upstream data change"}
+
+      - alert: HighRiskShareShifted
+        expr: |
+          abs(
+            sum(rate(score_decisions_total{decision="high_risk"}[1h])) / clamp_min(sum(rate(score_decisions_total[1h])), 1e-9)
+            - sum(rate(score_decisions_total{decision="high_risk"}[1d])) / clamp_min(sum(rate(score_decisions_total[1d])), 1e-9)
+          ) > 0.15
+        for: 30m
+        labels: {severity: ticket}
+        annotations: {summary: "High-risk share moved more than 15 points against the 24h baseline"}
+
+      - alert: RevenuePerEmployeeDrift
+        expr: |
+          (rate(input_revenue_per_employee_sum[1h]) / clamp_min(rate(input_revenue_per_employee_count[1h]), 1e-9))
+            / (rate(input_revenue_per_employee_sum[1d]) / clamp_min(rate(input_revenue_per_employee_count[1d]), 1e-9))
+            > 2
+        for: 30m
+        labels: {severity: ticket}
+        annotations: {summary: "Mean revenue per employee doubled against the 24h baseline"}
+
+      - alert: ShadowRulesetDisagrees
+        expr: |
+          sum(rate(shadow_disagreements_total[30m])) / clamp_min(sum(rate(shadow_decisions_total[30m])), 1e-9) > 0.1
+        for: 30m
+        labels: {severity: ticket}
+        annotations: {summary: "Shadow ruleset disagrees with the active one on more than 10% of decisions; review before promoting"}
+
+      - alert: ShadowRulesetFailing
+        expr: increase(shadow_failures_total[10m]) > 0
+        labels: {severity: ticket}
+        annotations: {summary: "Shadow ruleset raised errors; do not promote"}

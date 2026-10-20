@@ -292,3 +292,79 @@ def test_ingest_normalises_flags_and_dedupes_without_imputing(tmp_path, capsys):
     assert rows[0]["sector"] == "food_manufacturing" and rows[0]["region"] == "cataluna"
     assert "missing_ebitda" in rows[0]["flags"]
     assert rows[1]["employees"] == "" and "bad_date" in rows[1]["flags"]
+
+
+def _shadow_client(shadow, active=None):
+    return TestClient(
+        create_app(session_factory=make_session_factory("sqlite://"), api_keys=[KEY], active_ruleset=active, shadow_ruleset=shadow),
+        headers={"X-API-Key": KEY},
+    )
+
+
+def test_shadow_ruleset_is_recorded_but_never_returned():
+    shadow_client = _shadow_client("2026-11-v2-candidate")
+    # 22% of revenue: high_risk under v1 (ceiling 20%), low_risk under the candidate (25%)
+    body = shadow_client.post("/score", json=payload(requested_amount=220_000)).json()
+    assert body["decision"] == "high_risk"
+    assert body["ruleset_version"] == RULESET_VERSION
+    text = shadow_client.get("/metrics").text
+    assert 'shadow_decisions_total{decision="low_risk",ruleset_version="2026-11-v2-candidate"} 1.0' in text
+    assert 'shadow_disagreements_total{ruleset_version="2026-11-v2-candidate"} 1.0' in text
+
+
+def test_active_ruleset_can_be_switched_for_rollback():
+    candidate_client = _shadow_client(None, active="2026-11-v2-candidate")
+    body = candidate_client.post("/score", json=payload(requested_amount=220_000)).json()
+    assert body["decision"] == "low_risk"
+    assert body["ruleset_version"] == "2026-11-v2-candidate"
+
+
+def test_shadow_failure_does_not_affect_decision(monkeypatch):
+    import prototype.risk_scoring_prototype as mod
+
+    real = mod.score_application
+
+    def flaky(request, ruleset_version=RULESET_VERSION):
+        if ruleset_version == "2026-11-v2-candidate":
+            raise RuntimeError("bad candidate")
+        return real(request, ruleset_version)
+
+    monkeypatch.setattr(mod, "score_application", flaky)
+    shadow_client = _shadow_client("2026-11-v2-candidate")
+    response = shadow_client.post("/score", json=payload())
+    assert response.status_code == 200 and response.json()["decision"] == "low_risk"
+    assert 'shadow_failures_total{ruleset_version="2026-11-v2-candidate"} 1.0' in shadow_client.get("/metrics").text
+
+
+def test_unknown_ruleset_fails_at_startup():
+    with pytest.raises(ValueError):
+        create_app(session_factory=make_session_factory("sqlite://"), api_keys=[KEY], shadow_ruleset="nope")
+
+
+def _canary_client(percent):
+    return TestClient(
+        create_app(session_factory=make_session_factory("sqlite://"), api_keys=[KEY],
+                   canary_ruleset="2026-11-v2-candidate", canary_percent=percent),
+        headers={"X-API-Key": KEY},
+    )
+
+
+def test_canary_splits_traffic_and_is_stable_per_application():
+    c = _canary_client(30)
+    versions = {}
+    for i in range(400):
+        versions[i] = c.post("/score", json=payload(application_id=f"C-{i}")).json()["ruleset_version"]
+    share = sum(v == "2026-11-v2-candidate" for v in versions.values()) / 400
+    assert 0.2 < share < 0.4
+    for i in range(0, 400, 40):  # same application, same arm
+        assert c.post("/score", json=payload(application_id=f"C-{i}")).json()["ruleset_version"] == versions[i]
+
+
+def test_canary_zero_and_hundred_percent():
+    assert _canary_client(0).post("/score", json=payload()).json()["ruleset_version"] == RULESET_VERSION
+    assert _canary_client(100).post("/score", json=payload()).json()["ruleset_version"] == "2026-11-v2-candidate"
+
+
+def test_invalid_canary_percent_fails_at_startup():
+    with pytest.raises(ValueError):
+        _canary_client(101)

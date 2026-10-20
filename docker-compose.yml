@@ -18,9 +18,29 @@ services:
         IMAGE_VERSION: local
     environment:
       API_KEYS: ${API_KEYS:?set API_KEYS}
+      SHADOW_RULESET: ${SHADOW_RULESET:-}
+      CANARY_RULESET: ${CANARY_RULESET:-}
+      CANARY_PERCENT: ${CANARY_PERCENT:-0}
       DATABASE_URL: postgresql+psycopg://risk:risk-local-only@db:5432/risk
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./ops/prometheus/api_key:/etc/prometheus/api_key:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - alertmanager
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./ops/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"

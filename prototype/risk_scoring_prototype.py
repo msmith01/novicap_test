@@ -7,14 +7,20 @@ Configuration (environment):
     API_KEYS        comma-separated accepted X-API-Key values; if unset, /score returns 503
     DATABASE_URL    SQLAlchemy URL (default sqlite:///./scores.db; use Postgres in deployment)
     IMAGE_VERSION   build/image identifier recorded with each score
+    ACTIVE_RULESET  ruleset that decides (default RULESET_VERSION); set to a prior version to roll back
+    CANARY_RULESET  optional ruleset that decides for CANARY_PERCENT % of applications (stable per application_id)
+    CANARY_PERCENT  0-100, default 0
+    SHADOW_RULESET  optional candidate ruleset scored alongside, recorded in metrics/logs, never returned
 """
 
+import hashlib
 import hmac
 import json
 import logging
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Callable, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -31,6 +37,20 @@ from prototype.storage import make_session_factory, save_score
 RULESET_VERSION = "2026-10-v1"  # bump on any change to the rules or thresholds below
 REVENUE_PER_EMPLOYEE_RISK_FLOOR = 40_000  # below this, flag as risky
 REQUESTED_TO_REVENUE_RISK_CEILING = 0.20  # above this, flag as risky
+
+
+@dataclass(frozen=True)
+class Ruleset:
+    revenue_per_employee_floor: float
+    requested_to_revenue_ceiling: float
+
+
+# Every shipped ruleset stays here so a rollback is a config change, not a rebuild.
+# The candidate is an example of a change to trial in shadow mode before promoting.
+RULESETS = {
+    RULESET_VERSION: Ruleset(REVENUE_PER_EMPLOYEE_RISK_FLOOR, REQUESTED_TO_REVENUE_RISK_CEILING),
+    "2026-11-v2-candidate": Ruleset(REVENUE_PER_EMPLOYEE_RISK_FLOOR, 0.25),
+}
 
 REVENUE_PER_EMPLOYEE_BUCKETS = (10_000, 20_000, 40_000, 60_000, 100_000, 250_000, 1_000_000)
 REQUESTED_TO_REVENUE_BUCKETS = (0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0)
@@ -60,17 +80,19 @@ class ScoreResponse(BaseModel):
     request_id: str | None = None
 
 
-def score_application(request: ScoreRequest) -> ScoreResponse:
+def score_application(request: ScoreRequest, ruleset_version: str = RULESET_VERSION) -> ScoreResponse:
+    rules = RULESETS[ruleset_version]
     risk_factors = []
-    if request.annual_revenue / request.employees < REVENUE_PER_EMPLOYEE_RISK_FLOOR:
+    if request.annual_revenue / request.employees < rules.revenue_per_employee_floor:
         risk_factors.append("revenue_per_employee_below_floor")
-    if request.requested_amount / request.annual_revenue > REQUESTED_TO_REVENUE_RISK_CEILING:
+    if request.requested_amount / request.annual_revenue > rules.requested_to_revenue_ceiling:
         risk_factors.append("requested_amount_above_revenue_ceiling")
 
     return ScoreResponse(
         application_id=request.application_id,
         decision="high_risk" if risk_factors else "low_risk",
         risk_factors=risk_factors,
+        ruleset_version=ruleset_version,
     )
 
 
@@ -105,6 +127,15 @@ class Metrics:
         self.risk_factors = Counter(
             "score_risk_factors_total", "Triggered risk factors", ["factor", "ruleset_version", "source_system"], registry=self.registry
         )
+        self.shadow_decisions = Counter(
+            "shadow_decisions_total", "Decisions the shadow ruleset would have made", ["decision", "ruleset_version"], registry=self.registry
+        )
+        self.shadow_disagreements = Counter(
+            "shadow_disagreements_total", "Shadow decision differed from the active decision", ["ruleset_version"], registry=self.registry
+        )
+        self.shadow_failures = Counter(
+            "shadow_failures_total", "Shadow scoring raised an error", ["ruleset_version"], registry=self.registry
+        )
         self.persistence_failures = Counter(
             "score_persistence_failures_total", "Scores not recorded", registry=self.registry
         )
@@ -122,6 +153,10 @@ def create_app(
     session_factory: sessionmaker[Session] | None = None,
     api_keys: list[str] | None = None,
     image_version: str | None = None,
+    active_ruleset: str | None = None,
+    shadow_ruleset: str | None = None,
+    canary_ruleset: str | None = None,
+    canary_percent: float | None = None,
 ) -> FastAPI:
     _configure_logging()
     sessions = session_factory or make_session_factory()
@@ -129,6 +164,24 @@ def create_app(
     keys = api_keys if api_keys is not None else [
         k.strip() for k in os.environ.get("API_KEYS", "").split(",") if k.strip()
     ]
+
+    active = active_ruleset or os.environ.get("ACTIVE_RULESET") or RULESET_VERSION
+    shadow = shadow_ruleset or os.environ.get("SHADOW_RULESET") or None
+    canary = canary_ruleset or os.environ.get("CANARY_RULESET") or None
+    percent = canary_percent if canary_percent is not None else float(os.environ.get("CANARY_PERCENT", "0") or 0)
+    if not 0 <= percent <= 100:
+        raise ValueError("CANARY_PERCENT must be between 0 and 100")
+    for name in (active, shadow, canary):
+        if name is not None and name not in RULESETS:  # fail at startup, not on a request
+            raise ValueError(f"unknown ruleset {name!r}; known: {sorted(RULESETS)}")
+
+    def ruleset_for(application_id: str) -> str:
+        # Stable per application: the same ID always lands in the same arm, so retries agree.
+        if canary and percent > 0:
+            bucket = int.from_bytes(hashlib.sha256(application_id.encode()).digest()[:4], "big") % 10_000
+            if bucket < percent * 100:
+                return canary
+        return active
 
     app = FastAPI(title="Working Capital Risk Scoring")
     metrics = Metrics()
@@ -168,7 +221,9 @@ def create_app(
                 decision=getattr(request.state, "decision", None),
                 risk_factors=getattr(request.state, "risk_factors", None),
                 source_system=getattr(request.state, "source_system", None),
-                ruleset_version=RULESET_VERSION if hasattr(request.state, "decision") else None,
+                ruleset_version=getattr(request.state, "ruleset_version", None),
+                shadow_ruleset=shadow if hasattr(request.state, "decision") else None,
+                shadow_decision=getattr(request.state, "shadow_decision", None),
             )
 
     @app.exception_handler(RequestValidationError)
@@ -188,7 +243,8 @@ def create_app(
 
     @app.post("/score", response_model=ScoreResponse, dependencies=[Depends(require_api_key)])
     def score(request: ScoreRequest, http_request: Request, session: Session = Depends(get_session)):
-        result = score_application(request)
+        decider = ruleset_for(request.application_id)
+        result = score_application(request, decider)
         result.request_id = http_request.state.request_id
         try:
             save_score(
@@ -201,7 +257,7 @@ def create_app(
                 request_id=result.request_id,
                 decision=result.decision,
                 risk_factors=result.risk_factors,
-                ruleset_version=RULESET_VERSION,
+                ruleset_version=decider,
                 image_version=image,
             )
         except SQLAlchemyError as exc:
@@ -213,11 +269,23 @@ def create_app(
         source = request.source_system if request.source_system in KNOWN_SOURCE_SYSTEMS else (
             "other" if request.source_system else "unspecified"
         )
-        metrics.decisions.labels(result.decision, RULESET_VERSION, source).inc()
+        metrics.decisions.labels(result.decision, decider, source).inc()
         for factor in result.risk_factors:
-            metrics.risk_factors.labels(factor, RULESET_VERSION, source).inc()
+            metrics.risk_factors.labels(factor, decider, source).inc()
         metrics.revenue_per_employee.observe(request.annual_revenue / request.employees)
         metrics.requested_to_revenue.observe(request.requested_amount / request.annual_revenue)
+        http_request.state.ruleset_version = decider
+        if shadow:
+            # A failing candidate must never affect the decision already made.
+            try:
+                candidate = score_application(request, shadow)
+                http_request.state.shadow_decision = candidate.decision
+                metrics.shadow_decisions.labels(candidate.decision, shadow).inc()
+                if candidate.decision != result.decision:
+                    metrics.shadow_disagreements.labels(shadow).inc()
+            except Exception as exc:
+                metrics.shadow_failures.labels(shadow).inc()
+                _log(event="shadow_failed", request_id=result.request_id, error=type(exc).__name__)
         http_request.state.decision = result.decision
         http_request.state.source_system = request.source_system
         http_request.state.risk_factors = result.risk_factors
