@@ -7,3 +7,7 @@ venv/
 data/
 analysis/
 Brief.pdf
+tests/
+requirements-dev.txt
+*.db
+docker-compose.yml

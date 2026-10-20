@@ -2,7 +2,7 @@
 
 ## Request path
 
-FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. The current endpoint is a working slice, not production-ready: it does not authenticate callers, persist records, or include a ruleset version yet.
+FastAPI exposes `POST /score`. Pydantic validates the request before the scoring function runs; the scorer stays independent of HTTP. The response includes the decision and triggered rules. Each request gets a request ID, is authenticated by API key (a stopgap), and is persisted before the decision is returned; if the write fails the service returns 503 rather than an unrecorded decision. Logs are JSON metadata only (request ID, status, latency, decision, factors), never request values. The ruleset carries an explicit version string. The endpoint is still a working slice: no migrations, production identity, or monitoring yet.
 
 The checked-in Dockerfile packages the API on port 8000 and runs as a non-root user. Build and run it locally with `docker build -t working-capital-risk .` and `docker run --rm -p 8000:8000 working-capital-risk`, then try `/docs`. The build context excludes the raw data and notebook. For production, publish the image to ECR and run it on ECS Fargate behind authenticated HTTPS. Keep RDS Postgres private to the service. No AWS account is needed to agree on this design; provisioning comes later.
 

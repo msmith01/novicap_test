@@ -1,0 +1,26 @@
+# Local stack only: throwaway Postgres credentials, API key from the environment.
+# Usage: $env:API_KEYS="dev-key"; docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: risk
+      POSTGRES_PASSWORD: risk-local-only
+      POSTGRES_DB: risk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U risk"]
+      interval: 3s
+      retries: 20
+  api:
+    build:
+      context: .
+      args:
+        IMAGE_VERSION: local
+    environment:
+      API_KEYS: ${API_KEYS:?set API_KEYS}
+      DATABASE_URL: postgresql+psycopg://risk:risk-local-only@db:5432/risk
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
