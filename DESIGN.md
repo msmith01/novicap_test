@@ -26,7 +26,7 @@ When Data Science changes the formula, replace and test the ruleset while keepin
 
 - **Duplicate application IDs:** four IDs repeat in the export; I stored every submission under an internal ID and did not deduplicate. Ask the source owner whether repeats are duplicates or revisions (see OPEN_QUESTIONS.md).
 - **Production identity:** API keys are a stopgap. Move to the platform's identity and keep secrets in a secrets manager.
-- **Monitoring:** the metrics exist, but nothing scrapes them yet. Add Prometheus/CloudWatch collection, dashboards, and alerts against baselines, with breakdowns by source system (needs `source_system` in the request).
+- **Monitoring:** the metrics exist (decisions and risk factors are labelled by `source_system`, an optional request field stored on the application; unknown values are reported as `other` to bound label cardinality), but nothing scrapes them yet. Add Prometheus/CloudWatch collection, dashboards, and alerts against baselines.
 - **AWS:** ECR, ECS Fargate and RDS are designed, not provisioned. CI (tests plus image build) is defined in `.github/workflows/ci.yml` but has not run yet; no CD.
 - **Release tooling:** `prototype.replay` covers replay and diffing over a CSV, and `--from-db` re-scores stored applications and reports changed decisions; shadow and canary are described, not built.
 - **Data issues:** the service rejects bad inputs (422) rather than imputing. Cleaning the export (dates, sector and region labels, missing EBITDA) belongs in an ingestion step I did not build.

@@ -30,6 +30,7 @@ class Application(Base):
     employees: Mapped[int] = mapped_column(Integer)
     annual_revenue: Mapped[float] = mapped_column(Float)
     requested_amount: Mapped[float] = mapped_column(Float)
+    source_system: Mapped[str | None] = mapped_column(String, nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -80,6 +81,7 @@ def save_score(
     annual_revenue: float,
     requested_amount: float,
     request_id: str,
+    source_system: str | None = None,
     decision: str,
     risk_factors: list[str],
     ruleset_version: str,
@@ -91,6 +93,7 @@ def save_score(
         employees=employees,
         annual_revenue=annual_revenue,
         requested_amount=requested_amount,
+        source_system=source_system,
     )
     record = ScoreRecord(
         application_id=application.id,

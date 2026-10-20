@@ -33,6 +33,8 @@ def replay_row(row: dict) -> tuple[str, str]:
     """Return (outcome, detail): outcome is high_risk, low_risk or rejected."""
     payload = {"application_id": clean(row.get("application_id")) or ""}
     payload.update({f: clean(row.get(f)) for f in FIELDS})
+    if clean(row.get("source_system")):
+        payload["source_system"] = clean(row.get("source_system"))
     try:
         result = score_application(ScoreRequest.model_validate(payload))
     except ValidationError as exc:

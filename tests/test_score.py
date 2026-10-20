@@ -192,9 +192,9 @@ def test_metrics_count_decisions_and_errors_without_leaking_values():
     c.post("/score", json=payload(employees=1000))  # low revenue per employee -> high_risk
     c.post("/score", json=payload(employees=0))  # 422
     text = c.get("/metrics").text
-    assert f'score_decisions_total{{decision="low_risk",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
-    assert f'score_decisions_total{{decision="high_risk",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
-    assert f'score_risk_factors_total{{factor="revenue_per_employee_below_floor",ruleset_version="{RULESET_VERSION}"}} 1.0' in text
+    assert f'score_decisions_total{{decision="low_risk",ruleset_version="{RULESET_VERSION}",source_system="unspecified"}} 1.0' in text
+    assert f'score_decisions_total{{decision="high_risk",ruleset_version="{RULESET_VERSION}",source_system="unspecified"}} 1.0' in text
+    assert f'score_risk_factors_total{{factor="revenue_per_employee_below_floor",ruleset_version="{RULESET_VERSION}",source_system="unspecified"}} 1.0' in text
     assert 'http_requests_total{method="POST",route="/score",status="422"} 1.0' in text
     assert "input_revenue_per_employee_count 2.0" in text
     assert "SECRET-ID-1" not in text
@@ -261,3 +261,14 @@ def test_replay_from_db_reports_changed_decisions(tmp_path, capsys):
     text = capsys.readouterr().out
     assert "3 stored scores re-scored, 1 decisions changed" in text
     assert "high_risk -> low_risk: 1" in text
+
+
+def test_source_system_is_stored_and_labelled_with_bounded_cardinality():
+    c = _metrics_client()
+    assert c.post("/score", json=payload(source_system="legacy_crm")).status_code == 200
+    assert c.post("/score", json=payload(source_system="made_up_source")).status_code == 200
+    assert c.post("/score", json=payload(source_system="Bad Value!")).status_code == 422
+    text = c.get("/metrics").text
+    assert 'decision="low_risk",ruleset_version="%s",source_system="legacy_crm"} 1.0' % RULESET_VERSION in text
+    assert 'source_system="other"} 1.0' in text
+    assert "made_up_source" not in text

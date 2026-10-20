@@ -35,6 +35,10 @@ REQUESTED_TO_REVENUE_RISK_CEILING = 0.20  # above this, flag as risky
 REVENUE_PER_EMPLOYEE_BUCKETS = (10_000, 20_000, 40_000, 60_000, 100_000, 250_000, 1_000_000)
 REQUESTED_TO_REVENUE_BUCKETS = (0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0)
 
+# Known sources; anything else is stored as sent but reported as "other" in metrics labels
+# so a caller cannot create unbounded label cardinality.
+KNOWN_SOURCE_SYSTEMS = {"legacy_crm", "manual_entry", "new_partner_feed"}
+
 logger = logging.getLogger("risk_scoring")
 
 
@@ -45,6 +49,7 @@ class ScoreRequest(BaseModel):
     employees: int = Field(gt=0)
     annual_revenue: float = Field(gt=0, allow_inf_nan=False)
     requested_amount: float = Field(gt=0, allow_inf_nan=False)
+    source_system: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")
 
 
 class ScoreResponse(BaseModel):
@@ -95,10 +100,10 @@ class Metrics:
             "http_request_duration_seconds", "Request latency", ["route"], registry=self.registry
         )
         self.decisions = Counter(
-            "score_decisions_total", "Decisions returned", ["decision", "ruleset_version"], registry=self.registry
+            "score_decisions_total", "Decisions returned", ["decision", "ruleset_version", "source_system"], registry=self.registry
         )
         self.risk_factors = Counter(
-            "score_risk_factors_total", "Triggered risk factors", ["factor", "ruleset_version"], registry=self.registry
+            "score_risk_factors_total", "Triggered risk factors", ["factor", "ruleset_version", "source_system"], registry=self.registry
         )
         self.persistence_failures = Counter(
             "score_persistence_failures_total", "Scores not recorded", registry=self.registry
@@ -162,6 +167,7 @@ def create_app(
                 latency_ms=round(elapsed * 1000, 1),
                 decision=getattr(request.state, "decision", None),
                 risk_factors=getattr(request.state, "risk_factors", None),
+                source_system=getattr(request.state, "source_system", None),
                 ruleset_version=RULESET_VERSION if hasattr(request.state, "decision") else None,
             )
 
@@ -191,6 +197,7 @@ def create_app(
                 employees=request.employees,
                 annual_revenue=request.annual_revenue,
                 requested_amount=request.requested_amount,
+                source_system=request.source_system,
                 request_id=result.request_id,
                 decision=result.decision,
                 risk_factors=result.risk_factors,
@@ -203,12 +210,16 @@ def create_app(
             metrics.persistence_failures.inc()
             _log(event="persistence_failed", request_id=result.request_id, error=type(exc).__name__)
             raise HTTPException(status_code=503, detail="could not record score; retry")
-        metrics.decisions.labels(result.decision, RULESET_VERSION).inc()
+        source = request.source_system if request.source_system in KNOWN_SOURCE_SYSTEMS else (
+            "other" if request.source_system else "unspecified"
+        )
+        metrics.decisions.labels(result.decision, RULESET_VERSION, source).inc()
         for factor in result.risk_factors:
-            metrics.risk_factors.labels(factor, RULESET_VERSION).inc()
+            metrics.risk_factors.labels(factor, RULESET_VERSION, source).inc()
         metrics.revenue_per_employee.observe(request.annual_revenue / request.employees)
         metrics.requested_to_revenue.observe(request.requested_amount / request.annual_revenue)
         http_request.state.decision = result.decision
+        http_request.state.source_system = request.source_system
         http_request.state.risk_factors = result.risk_factors
         return result
 
