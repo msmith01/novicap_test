@@ -42,7 +42,7 @@ Status key: **Done** = built and run locally; **Partial** = built but not run in
 **Status: Partial** (thresholds are untuned guesses; no real notification targets)
 - Prometheus metrics at `GET /metrics`: latency, errors, decisions and risk factors by ruleset, and input-ratio histograms for drift.
 - Eight alerts in [ops/prometheus/alerts.yml](ops/prometheus/alerts.yml): 5xx, unrecorded scores, traffic drop, validation-reject spike, high-risk share drift, revenue-per-employee drift, shadow disagreement, shadow failure.
-- Alertmanager ([ops/alertmanager/](ops/alertmanager/)) routes `page` and `ticket` to Discord; the webhook is git-ignored and still a placeholder.
+- Alertmanager ([ops/alertmanager/](ops/alertmanager/)) routes `page` and `ticket` to Discord; the webhook is git-ignored and still a placeholder. Live delivery is deliberately deferred; DESIGN.md (Monitoring) lists what I would implement for production alerting.
 - Stated limit: these catch faults and drift, not predictive quality. That needs repayment outcomes.
 
 ### 4c. What to log and track so incidents are debuggable weeks later

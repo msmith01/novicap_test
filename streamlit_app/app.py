@@ -231,7 +231,7 @@ with tabs[3]:
         st.dataframe(pd.DataFrame(ov["by_ruleset"]), width="stretch", hide_index=True)
         with st.expander("Metric samples scraped from /metrics"):
             st.code("\n".join(snap["metric_samples"]), language="text")
-        st.info("Alertmanager routes to a Discord webhook, but that webhook was a placeholder when this was recorded, so Discord delivery has not been exercised.")
+        st.info("Alertmanager routes to a Discord webhook, but that webhook was a placeholder when this was recorded, so delivery has not been exercised. This was deferred deliberately: for production I would page on-call via PagerDuty/Opsgenie, send tickets to chat, add a dead-man's-switch heartbeat, fire a test alert on every deploy and keep the webhook in a secrets manager (see DESIGN.md, Monitoring).")
 
 # ---------------------------------------------------------------- Demo video
 with tabs[4]:
