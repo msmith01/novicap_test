@@ -2,6 +2,61 @@
 
 Newest entry first. One entry per working message: what was done, what was verified, what is next.
 
+## Step 14 — 2026-10-21: leaner Streamlit app (7 tabs -> 4)
+
+**Done**
+- Rewrote `streamlit_app/app.py`: tabs are now Answers to the brief, Data, Try the API, Rollout & monitoring.
+  - Answers to the brief: one table mapping each brief bullet to a short answer; DESIGN.md, coverage checklist, open questions and demo video are expanders.
+  - Data (new, live from `data/raw_applications.csv`): metrics, findings/what-the-pipeline-does/push-back table, replay of all 196 rows (158 low, 13 high, 25 rejected, matches the earlier replay).
+  - Try the API: FastAPI-docs layout (POST badge, X-API-Key, Examples dropdown, editable JSON body, Execute, curl, server response, schema and responses tables, OpenAPI expander); kept the stored-scores table and metrics at the bottom.
+  - Rollout & monitoring: merged Rollout lab and Recorded stack evidence, plus a short "what is logged".
+  - Removed the Overview, Demo video, Design and Tools tabs (content folded in or dropped).
+- Verified with `streamlit.testing.AppTest`: no exceptions, 4 tabs, Execute returns 200 for the healthy example and 422 for zero employees.
+
+**Next:** commit and push (Streamlit Cloud redeploys from `main`), then user checks the live app.
+
+## Step 13 — 2026-10-21: app deployed, private by default
+
+- User clicked Deploy before setting the Python version (fixable later in app Settings → Advanced).
+- `https://novicaptest-hjntij9h9rqqzmjwqplp8h.streamlit.app/` exists and redirects to the Streamlit sign-in page (private by default), so I cannot load it to verify the tabs. Next: user confirms it runs and invites the interviewer by email, or makes it public.
+
+## Step 12 — 2026-10-21: Streamlit deploy form filled
+
+- User filled the Community Cloud form: `msmith01/novicap_test`, `main`, `streamlit_app/app.py`, URL `novicaptest-hjntij9h9rqqzmjwqplp8h.streamlit.app`. Told them to pick Python 3.12/3.13 under Advanced settings and click Deploy. Waiting for the live URL/result.
+
+## Step 11 — 2026-10-21: pushed to GitHub
+
+- Push to private `msmith01/novicap_test` succeeded (`main`, new branch). Token was passed per-command via http.extraheader, not stored in git config.
+- Next: user creates the app at share.streamlit.io (repo `msmith01/novicap_test`, branch `main`, file `streamlit_app/app.py`); then verify the live app. The PROGRESS.md edit for this step is uncommitted.
+
+## Step 10 — 2026-10-21: token page confirms the cause
+
+- User pasted the token's settings page: repo access is `msmith01/novicap_test` (correct), but "code" (= Contents) is Read-only. Only workflows, repository creation, codespaces secrets and GitHub App access are Read and write. Asked user to set Contents to Read and write. Nothing pushed.
+
+## Step 9 — 2026-10-21: token can now see the repo but not write
+
+- Retried: API now returns the repo (private: true), so repo access was granted. Push still 403 "Write access to repository not granted": the token's *Contents* permission is read-only or unset. Nothing pushed.
+- Needed from user: Contents → Read and write on the token (or push from own terminal).
+
+## Step 8 — 2026-10-21: repo private, token still can't reach it
+
+**Done**
+- User made `msmith01/novicap_test` private. Rechecked: API now returns 404 for it with our token, and `/user/repos` lists only public repos, so the fine-grained token has not been granted this repo. Push still 403 ("Write access to repository not granted"). Nothing pushed.
+
+**Needed from user:** edit the token (github.com/settings/personal-access-tokens) → Repository access → select `novicap_test` → Contents: read and write. Or push from own terminal.
+
+## Step 7 — 2026-10-21: pivot to Streamlit Community Cloud; GitHub push blocked
+
+**Done**
+- README now records that Hugging Face blocked free Gradio/Docker Spaces (402) and that the live host is Streamlit Community Cloud, with the trade-off (free but sleeps; production would be VPS/AWS).
+- `app.py` already supports Cloud (path fallback to the repo root), main file `streamlit_app/app.py`, requirements in `streamlit_app/requirements.txt`.
+- Committed locally (docs, build_space.py Docker output, PROGRESS.md).
+- Found `msmith01/novicap_test` is PUBLIC and empty. Tried to set it private and push: both denied (403, "Resource not accessible by personal access token"). Nothing was pushed, so nothing is exposed.
+
+**Needed from user:** GitHub token with Contents (read/write) and Administration (write) on that repo, or make it private by hand in repo Settings; then sign in at share.streamlit.io with GitHub.
+
+**Next:** push, deploy on Community Cloud, set sharing to private/viewer list, test.
+
 ## Step 6 — 2026-10-21: Space upload attempted; blocked by Hugging Face plan
 
 **Done**
