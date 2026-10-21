@@ -41,6 +41,17 @@ docker run --rm -p 8000:8000 -e API_KEYS=dev-key working-capital-risk
 
 Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/`, `analysis/`, and the brief. The image build and the `docker compose up` stack with Postgres were verified on 2026-10-20. If the build fails with `error getting credentials` in a non-interactive shell, pull `python:3.12-slim` and `postgres:16-alpine` first with `DOCKER_CONFIG` pointing at a folder containing `{}` in `config.json`, then build with `DOCKER_BUILDKIT=0`.
 
+## Showcase app (Streamlit)
+
+`streamlit_app/app.py` is the shareable deliverable: the real API, canary/shadow rollout and metrics run live
+in-process, and a timestamped recording of the compose stack (Postgres, Prometheus, Alertmanager) sits in
+`streamlit_app/evidence/`. Run it with `python -m pip install -r streamlit_app/requirements.txt` then
+`python -m streamlit run streamlit_app/app.py`. Refresh the recording with
+`python scripts/capture_evidence.py --key <key>` while the stack is up.
+
+- Streamlit Community Cloud: point it at this repo, main file `streamlit_app/app.py`.
+- Hugging Face Spaces: `python scripts/build_space.py` assembles a self-contained Space in `dist/space`; upload that folder to a Streamlit-SDK Space.
+
 ## Project map
 
 - `prototype/risk_scoring_prototype.py`: FastAPI app, auth, logging, request model, and scoring rules.

@@ -1,0 +1,574 @@
+{
+  "captured_at": "2026-10-21T13:00:59.919671+00:00",
+  "stack": "docker compose: api, postgres 16, prometheus, alertmanager",
+  "overview": {
+    "config": {
+      "image_version": "dev",
+      "active_ruleset": "2026-10-v1",
+      "shadow_ruleset": "2026-11-v2-candidate",
+      "canary_ruleset": "2026-11-v2-candidate",
+      "canary_percent": 50.0,
+      "rulesets": {
+        "2026-10-v1": {
+          "revenue_per_employee_floor": 40000,
+          "requested_to_revenue_ceiling": 0.2
+        },
+        "2026-11-v2-candidate": {
+          "revenue_per_employee_floor": 40000,
+          "requested_to_revenue_ceiling": 0.25
+        }
+      }
+    },
+    "totals": {
+      "scored": 138,
+      "by_decision": {
+        "low_risk": 66,
+        "high_risk": 72
+      }
+    },
+    "by_ruleset": [
+      {
+        "ruleset": "2026-11-v2-candidate",
+        "decision": "high_risk",
+        "count": 5
+      },
+      {
+        "ruleset": "2026-11-v2-candidate",
+        "decision": "low_risk",
+        "count": 57
+      },
+      {
+        "ruleset": "2026-10-v1",
+        "decision": "low_risk",
+        "count": 9
+      },
+      {
+        "ruleset": "2026-10-v1",
+        "decision": "high_risk",
+        "count": 67
+      }
+    ],
+    "recent": [
+      {
+        "application_id": "DEMO-HNQLI",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 100000.0,
+        "source_system": "manual_entry",
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "dev",
+        "request_id": "f2ef4d0e-a71e-4b4a-b527-e33dc3cd0e8b",
+        "scored_at": "2026-10-21T12:44:46.494327+00:00"
+      },
+      {
+        "application_id": "R-40",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "f4389188-6615-4189-a5d5-8a40297818c9",
+        "scored_at": "2026-10-20T16:43:20.218344+00:00"
+      },
+      {
+        "application_id": "R-39",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "5c27030b-b84d-417a-9e8f-6e2b15f57177",
+        "scored_at": "2026-10-20T16:43:20.187772+00:00"
+      },
+      {
+        "application_id": "R-38",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "21c8ee94-1c74-4bf5-b026-a027b1abdfb7",
+        "scored_at": "2026-10-20T16:43:20.158426+00:00"
+      },
+      {
+        "application_id": "R-37",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "6b9cb3c3-8ed5-427a-a77f-b1399c2e7d00",
+        "scored_at": "2026-10-20T16:43:20.130807+00:00"
+      },
+      {
+        "application_id": "R-36",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "36ea4d8d-a206-40c7-bff1-c697abb7a94c",
+        "scored_at": "2026-10-20T16:43:20.102637+00:00"
+      },
+      {
+        "application_id": "R-35",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "38851bd5-0b29-44c9-b6eb-44a81a241a50",
+        "scored_at": "2026-10-20T16:43:20.074853+00:00"
+      },
+      {
+        "application_id": "R-34",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "fd5718ef-f6a0-4e06-bf1a-e0ee0c98c586",
+        "scored_at": "2026-10-20T16:43:20.046547+00:00"
+      },
+      {
+        "application_id": "R-33",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "94120dcd-df60-49ce-809d-f2c61f143788",
+        "scored_at": "2026-10-20T16:43:20.016642+00:00"
+      },
+      {
+        "application_id": "R-32",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "36a4ab5d-721a-41c7-af5a-4b0ba788a06d",
+        "scored_at": "2026-10-20T16:43:19.986145+00:00"
+      },
+      {
+        "application_id": "R-31",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "7c1507af-9f1a-460e-8367-2c9ace52ede9",
+        "scored_at": "2026-10-20T16:43:19.944839+00:00"
+      },
+      {
+        "application_id": "R-30",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "c708a4db-aaf1-461f-9e85-e388321ee3f8",
+        "scored_at": "2026-10-20T16:43:19.916323+00:00"
+      },
+      {
+        "application_id": "R-29",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "high_risk",
+        "risk_factors": [
+          "requested_amount_above_revenue_ceiling"
+        ],
+        "ruleset_version": "2026-10-v1",
+        "image_version": "local",
+        "request_id": "8c64c229-dfd0-4b5e-9465-7aecaefeef2d",
+        "scored_at": "2026-10-20T16:43:19.888436+00:00"
+      },
+      {
+        "application_id": "R-28",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "ac06232d-afb6-4ec4-a6aa-d364d457d056",
+        "scored_at": "2026-10-20T16:43:19.860450+00:00"
+      },
+      {
+        "application_id": "R-27",
+        "employees": 10,
+        "annual_revenue": 1000000.0,
+        "requested_amount": 220000.0,
+        "source_system": null,
+        "decision": "low_risk",
+        "risk_factors": [],
+        "ruleset_version": "2026-11-v2-candidate",
+        "image_version": "local",
+        "request_id": "ac3fd834-340e-4447-9eec-3a9b78730e5c",
+        "scored_at": "2026-10-20T16:43:19.831975+00:00"
+      }
+    ],
+    "schema": {
+      "dialect": "postgresql",
+      "revision": "0002",
+      "server_version": "16.15"
+    },
+    "shadow": {
+      "decisions": 1.0,
+      "disagreements": 0,
+      "failures": 0
+    },
+    "persistence_failures": 0.0,
+    "behind_proxy": false
+  },
+  "monitoring": {
+    "prometheus": {
+      "configured": true,
+      "reachable": true,
+      "targets": [
+        {
+          "job": "risk-scoring",
+          "health": "up",
+          "last_error": ""
+        }
+      ],
+      "rules": [
+        {
+          "name": "ScoringErrorRateHigh",
+          "state": "inactive",
+          "severity": "page",
+          "summary": "More than 2% of /score requests are failing (5xx)"
+        },
+        {
+          "name": "ScoreNotRecorded",
+          "state": "inactive",
+          "severity": "page",
+          "summary": "Decisions could not be recorded; callers receive 503"
+        },
+        {
+          "name": "ScoringTrafficDropped",
+          "state": "inactive",
+          "severity": "ticket",
+          "summary": "/score traffic is under 10% of the same time yesterday"
+        },
+        {
+          "name": "ValidationRejectionSpike",
+          "state": "inactive",
+          "severity": "ticket",
+          "summary": "Over 30% of requests rejected as invalid: likely an upstream data change"
+        },
+        {
+          "name": "HighRiskShareShifted",
+          "state": "firing",
+          "severity": "ticket",
+          "summary": "High-risk share moved more than 15 points against the 24h baseline"
+        },
+        {
+          "name": "RevenuePerEmployeeDrift",
+          "state": "inactive",
+          "severity": "ticket",
+          "summary": "Mean revenue per employee doubled against the 24h baseline"
+        },
+        {
+          "name": "ShadowRulesetDisagrees",
+          "state": "inactive",
+          "severity": "ticket",
+          "summary": "Shadow ruleset disagrees with the active one on more than 10% of decisions; review before promoting"
+        },
+        {
+          "name": "ShadowRulesetFailing",
+          "state": "inactive",
+          "severity": "ticket",
+          "summary": "Shadow ruleset raised errors; do not promote"
+        }
+      ]
+    },
+    "alertmanager": {
+      "configured": true,
+      "reachable": true,
+      "version": "0.28.1",
+      "active_alerts": [
+        {
+          "name": "HighRiskShareShifted",
+          "severity": "ticket",
+          "state": "active",
+          "starts_at": "2026-10-20T18:13:19.006Z"
+        }
+      ]
+    }
+  },
+  "prometheus_rules": {
+    "groups": [
+      {
+        "name": "risk-scoring",
+        "file": "/etc/prometheus/alerts.yml",
+        "rules": [
+          {
+            "state": "inactive",
+            "name": "ScoringErrorRateHigh",
+            "query": "sum(rate(http_requests_total{route=\"/score\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total{route=\"/score\"}[5m])), 1e-09) > 0.02",
+            "duration": 300,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "page"
+            },
+            "annotations": {
+              "summary": "More than 2% of /score requests are failing (5xx)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 0.000229997,
+            "lastEvaluation": "2026-10-21T13:00:58.78935981Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "ScoreNotRecorded",
+            "query": "increase(score_persistence_failures_total[5m]) > 0",
+            "duration": 0,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "page"
+            },
+            "annotations": {
+              "summary": "Decisions could not be recorded; callers receive 503"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 3.3035e-05,
+            "lastEvaluation": "2026-10-21T13:00:58.789593317Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "ScoringTrafficDropped",
+            "query": "sum(rate(http_requests_total{route=\"/score\"}[15m])) < 0.1 * sum(rate(http_requests_total{route=\"/score\"}[15m] offset 1d)) and sum(rate(http_requests_total{route=\"/score\"}[15m] offset 1d)) > 0",
+            "duration": 900,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "/score traffic is under 10% of the same time yesterday"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 0.000172586,
+            "lastEvaluation": "2026-10-21T13:00:58.789627574Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "ValidationRejectionSpike",
+            "query": "sum(rate(http_requests_total{route=\"/score\",status=\"422\"}[1h])) / clamp_min(sum(rate(http_requests_total{route=\"/score\"}[1h])), 1e-09) > 0.3",
+            "duration": 900,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "Over 30% of requests rejected as invalid: likely an upstream data change"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 0.000107829,
+            "lastEvaluation": "2026-10-21T13:00:58.789801344Z",
+            "type": "alerting"
+          },
+          {
+            "state": "firing",
+            "name": "HighRiskShareShifted",
+            "query": "abs(sum(rate(score_decisions_total{decision=\"high_risk\"}[1h])) / clamp_min(sum(rate(score_decisions_total[1h])), 1e-09) - sum(rate(score_decisions_total{decision=\"high_risk\"}[1d])) / clamp_min(sum(rate(score_decisions_total[1d])), 1e-09)) > 0.15",
+            "duration": 1800,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "High-risk share moved more than 15 points against the 24h baseline"
+            },
+            "alerts": [
+              {
+                "labels": {
+                  "alertname": "HighRiskShareShifted",
+                  "severity": "ticket"
+                },
+                "annotations": {
+                  "summary": "High-risk share moved more than 15 points against the 24h baseline"
+                },
+                "state": "firing",
+                "activeAt": "2026-10-20T17:43:19.00617708Z",
+                "value": "6.111110004436401e-01"
+              }
+            ],
+            "health": "ok",
+            "evaluationTime": 0.002507975,
+            "lastEvaluation": "2026-10-21T13:00:58.789910374Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "RevenuePerEmployeeDrift",
+            "query": "(rate(input_revenue_per_employee_sum[1h]) / clamp_min(rate(input_revenue_per_employee_count[1h]), 1e-09)) / (rate(input_revenue_per_employee_sum[1d]) / clamp_min(rate(input_revenue_per_employee_count[1d]), 1e-09)) > 2",
+            "duration": 1800,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "Mean revenue per employee doubled against the 24h baseline"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 0.000951319,
+            "lastEvaluation": "2026-10-21T13:00:58.792421666Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "ShadowRulesetDisagrees",
+            "query": "sum(rate(shadow_disagreements_total[30m])) / clamp_min(sum(rate(shadow_decisions_total[30m])), 1e-09) > 0.1",
+            "duration": 1800,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "Shadow ruleset disagrees with the active one on more than 10% of decisions; review before promoting"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 6.8937e-05,
+            "lastEvaluation": "2026-10-21T13:00:58.793376451Z",
+            "type": "alerting"
+          },
+          {
+            "state": "inactive",
+            "name": "ShadowRulesetFailing",
+            "query": "increase(shadow_failures_total[10m]) > 0",
+            "duration": 0,
+            "keepFiringFor": 0,
+            "labels": {
+              "severity": "ticket"
+            },
+            "annotations": {
+              "summary": "Shadow ruleset raised errors; do not promote"
+            },
+            "alerts": [],
+            "health": "ok",
+            "evaluationTime": 2.87e-05,
+            "lastEvaluation": "2026-10-21T13:00:58.793446516Z",
+            "type": "alerting"
+          }
+        ],
+        "interval": 5,
+        "limit": 0,
+        "evaluationTime": 0.004140731,
+        "lastEvaluation": "2026-10-21T13:00:58.789335398Z"
+      }
+    ],
+    "groupNextToken:omitempty": ""
+  },
+  "alertmanager_status": {
+    "branch": "HEAD",
+    "buildDate": "20250307-15:05:18",
+    "buildUser": "root@fa3ca569dfe4",
+    "goVersion": "go1.23.7",
+    "revision": "b2099eaa2c9ebc25edb26517cb9c732738e93910",
+    "version": "0.28.1"
+  },
+  "alertmanager_alerts": [
+    {
+      "annotations": {
+        "summary": "High-risk share moved more than 15 points against the 24h baseline"
+      },
+      "endsAt": "2026-10-21T13:03:59.006Z",
+      "fingerprint": "a0d577354bfc50ac",
+      "receivers": [
+        {
+          "name": "discord-ticket"
+        }
+      ],
+      "startsAt": "2026-10-20T18:13:19.006Z",
+      "status": {
+        "inhibitedBy": [],
+        "mutedBy": [],
+        "silencedBy": [],
+        "state": "active"
+      },
+      "updatedAt": "2026-10-21T12:59:59.873Z",
+      "generatorURL": "http://d7fdabb81aa2:9090/graph?g0.expr=abs%28sum%28rate%28score_decisions_total%7Bdecision%3D%22high_risk%22%7D%5B1h%5D%29%29+%2F+clamp_min%28sum%28rate%28score_decisions_total%5B1h%5D%29%29%2C+1e-09%29+-+sum%28rate%28score_decisions_total%7Bdecision%3D%22high_risk%22%7D%5B1d%5D%29%29+%2F+clamp_min%28sum%28rate%28score_decisions_total%5B1d%5D%29%29%2C+1e-09%29%29+%3E+0.15&g0.tab=1",
+      "labels": {
+        "alertname": "HighRiskShareShifted",
+        "severity": "ticket"
+      }
+    }
+  ],
+  "metric_samples": [
+    "http_requests_total{method=\"GET\",route=\"/metrics\",status=\"200\"} 207.0",
+    "http_requests_total{method=\"GET\",route=\"/console/api/monitoring\",status=\"200\"} 9.0",
+    "http_requests_total{method=\"GET\",route=\"/\",status=\"200\"} 2.0",
+    "http_requests_total{method=\"GET\",route=\"/demo.mp4\",status=\"200\"} 1.0",
+    "http_requests_total{method=\"GET\",route=\"/console/api/overview\",status=\"200\"} 9.0",
+    "http_requests_total{method=\"GET\",route=\"unmatched\",status=\"404\"} 1.0",
+    "http_requests_total{method=\"POST\",route=\"/score\",status=\"200\"} 1.0",
+    "score_decisions_total{decision=\"low_risk\",ruleset_version=\"2026-10-v1\",source_system=\"manual_entry\"} 1.0",
+    "shadow_decisions_total{decision=\"low_risk\",ruleset_version=\"2026-11-v2-candidate\"} 1.0",
+    "shadow_decisions_created{decision=\"low_risk\",ruleset_version=\"2026-11-v2-candidate\"} 1.792586686497139e+09",
+    "score_persistence_failures_total 0.0",
+    "score_persistence_failures_created 1.792586558929834e+09"
+  ]
+}

@@ -10,3 +10,5 @@ ops/alertmanager/discord_webhook
 ops/prometheus/api_key.local
 .terraform/
 *.tfstate*
+
+dist/
