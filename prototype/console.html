@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Scoring Console</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1b1f27; --muted: #5d6675; --line: #dfe3ea;
+    --accent: #2457d6; --good: #17794a; --bad: #b3261e; --warn: #9a6200;
+    --good-bg: #e3f4ea; --bad-bg: #fbe7e5; --warn-bg: #fdf0d5; --chip: #eceff4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --card: #1a1f28; --ink: #e6e9ef; --muted: #98a2b3; --line: #2b3240;
+      --accent: #7aa2ff; --good: #5fd39a; --bad: #ff8b82; --warn: #f0b35a;
+      --good-bg: #16342a; --bad-bg: #3b1f1d; --warn-bg: #3a2d14; --chip: #262d3a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+  .c12 { grid-column: span 12; } .c7 { grid-column: span 7; } .c5 { grid-column: span 5; } .c6 { grid-column: span 6; }
+  @media (max-width: 800px) { .c7, .c5, .c6 { grid-column: span 12; } }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+  input, button, select { font: inherit; }
+  input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  .fields { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 500px) { .fields { grid-template-columns: 1fr; } }
+  button { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; white-space: nowrap; }
+  .good { background: var(--good-bg); color: var(--good); } .bad { background: var(--bad-bg); color: var(--bad); } .warn { background: var(--warn-bg); color: var(--warn); }
+  .result { margin-top: 14px; padding: 12px; border-radius: 8px; border: 1px solid var(--line); }
+  .result.high_risk { background: var(--bad-bg); } .result.low_risk { background: var(--good-bg); }
+  .result strong { font-size: 18px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .muted { color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .stats { display: flex; flex-wrap: wrap; gap: 20px; }
+  .stat b { display: block; font-size: 24px; line-height: 1.1; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--chip); margin: 6px 0 2px; }
+  .bar i { display: block; } .bar .h { background: var(--bad); } .bar .l { background: var(--good); }
+  .stack { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .tool { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .tool b { display: block; }
+  .tool p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  a { color: var(--accent); }
+  video { width: 100%; border-radius: 8px; background: #000; }
+  #gate { max-width: 460px; }
+  #app[hidden], #gate[hidden] { display: none; }
+  .err { color: var(--bad); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Working Capital Risk Scoring</h1>
+      <p>Live operator console: score an application, then watch it land in Postgres, the metrics, and the alert pipeline.</p>
+    </div>
+    <div class="muted"><a href="/docs">API docs</a> &middot; <span id="refreshed"></span></div>
+  </header>
+
+  <section id="gate" class="card" hidden>
+    <h2>API key</h2>
+    <label for="key">Enter the API key you were given</label>
+    <input id="key" type="password" autocomplete="off">
+    <div class="row"><button id="keyGo">Open console</button></div>
+    <div class="err" id="keyErr"></div>
+  </section>
+
+  <div id="app" hidden>
+    <div class="grid">
+      <section class="card c7">
+        <h2>1 &middot; Score an application</h2>
+        <div class="row" style="margin:0 0 12px" id="presets"></div>
+        <form id="form">
+          <div class="fields">
+            <div><label for="application_id">Application ID</label><input id="application_id" required></div>
+            <div><label for="source_system">Source system</label><input id="source_system" placeholder="legacy_crm" pattern="[a-z0-9_]{1,40}"></div>
+            <div><label for="employees">Employees</label><input id="employees" type="number" min="1" step="1" required></div>
+            <div><label for="annual_revenue">Annual revenue</label><input id="annual_revenue" type="number" min="1" step="any" required></div>
+            <div><label for="requested_amount">Requested amount</label><input id="requested_amount" type="number" min="1" step="any" required></div>
+          </div>
+          <div class="row"><button id="submit">POST /score</button><span class="muted" id="status"></span></div>
+        </form>
+        <div id="result"></div>
+      </section>
+
+      <section class="card c5">
+        <h2>2 &middot; Rollout</h2>
+        <div class="stats" id="rolloutStats"></div>
+        <div id="rolloutBars"></div>
+        <p class="muted" id="rolloutNote" style="font-size:13px"></p>
+      </section>
+
+      <section class="card c12">
+        <h2>3 &middot; Recent scores (read back from the database)</h2>
+        <div class="scroll"><table id="recent"></table></div>
+      </section>
+
+      <section class="card c6">
+        <h2>4 &middot; Prometheus</h2>
+        <div id="prom" class="muted">Loading…</div>
+      </section>
+
+      <section class="card c6">
+        <h2>5 &middot; Alertmanager &rarr; Discord</h2>
+        <div id="am" class="muted">Loading…</div>
+        <div class="row"><button class="ghost" id="testAlert">Send test alert</button><span class="muted" id="testStatus"></span></div>
+      </section>
+
+      <section class="card c12">
+        <h2>6 &middot; What is running, and where to see it</h2>
+        <div class="stack" id="stack"></div>
+      </section>
+
+      <section class="card c12">
+        <h2>7 &middot; Narrated walkthrough</h2>
+        <video controls preload="none" src="/demo.mp4"></video>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids.flat()) n.append(k instanceof Node ? k : document.createTextNode(k ?? ""));
+  return n;
+};
+const chip = (text, cls = "") => el("span", { className: "chip " + cls }, text);
+const fmt = (n) => Number(n).toLocaleString();
+
+let KEY = "";
+try { KEY = sessionStorage.getItem("apiKey") || ""; } catch {}
+const fromHash = new URLSearchParams(location.hash.slice(1)).get("key");
+if (fromHash) { KEY = fromHash; history.replaceState(null, "", location.pathname); }
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { "X-API-Key": KEY, "Content-Type": "application/json" } });
+  let body = null;
+  try { body = await res.json(); } catch {}
+  return { res, body };
+}
+
+const PRESETS = [
+  ["Healthy", { employees: 10, annual_revenue: 1000000, requested_amount: 100000 }],
+  ["Thin revenue / employee", { employees: 100, annual_revenue: 1000000, requested_amount: 100000 }],
+  ["Over-asking", { employees: 10, annual_revenue: 1000000, requested_amount: 500000 }],
+  ["Both rules trip", { employees: 100, annual_revenue: 1000000, requested_amount: 500000 }],
+  ["Invalid (0 employees)", { employees: 0, annual_revenue: 1000000, requested_amount: 100000 }],
+];
+function fill(values) {
+  $("application_id").value = "DEMO-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+  $("source_system").value = "manual_entry";
+  for (const [k, v] of Object.entries(values)) $(k).value = v;
+  $("employees").removeAttribute("min");
+}
+for (const [label, values] of PRESETS) {
+  const b = el("button", { type: "button", className: "ghost" }, label);
+  b.onclick = () => fill(values);
+  $("presets").append(b);
+}
+fill(PRESETS[0][1]);
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  $("submit").disabled = true; $("status").textContent = "Scoring…";
+  const body = {
+    application_id: $("application_id").value,
+    employees: Number($("employees").value),
+    annual_revenue: Number($("annual_revenue").value),
+    requested_amount: Number($("requested_amount").value),
+  };
+  if ($("source_system").value) body.source_system = $("source_system").value;
+  const { res, body: out } = await api("/score", { method: "POST", body: JSON.stringify(body) });
+  $("submit").disabled = false; $("status").textContent = "HTTP " + res.status;
+  const box = $("result"); box.replaceChildren();
+  if (res.ok) {
+    box.append(el("div", { className: "result " + out.decision },
+      el("strong", {}, out.decision === "high_risk" ? "High risk" : "Low risk"),
+      el("div", { style: "margin-top:6px" }, out.risk_factors.length ? out.risk_factors.map((f) => chip(f, "bad")) : chip("no risk factors", "good")),
+      el("div", { className: "muted", style: "margin-top:8px;font-size:13px" }, "ruleset ", el("span", { className: "mono" }, out.ruleset_version),
+        " · request ", el("span", { className: "mono" }, out.request_id))));
+    refresh();
+  } else {
+    const detail = Array.isArray(out?.detail) ? out.detail.map((d) => (d.loc || []).slice(1).join(".") + ": " + d.msg).join("; ") : (out?.detail || "error");
+    box.append(el("div", { className: "result" }, el("strong", {}, "Rejected (" + res.status + ")"), el("div", { className: "muted" }, detail)));
+  }
+};
+
+function renderRollout(o) {
+  const c = o.config, t = o.totals;
+  const high = t.by_decision.high_risk || 0, low = t.by_decision.low_risk || 0;
+  $("rolloutStats").replaceChildren(
+    ...[["scored", fmt(t.scored)], ["high risk", fmt(high)], ["low risk", fmt(low)]].map(([l, v]) =>
+      el("div", { className: "stat" }, el("b", {}, v), el("span", {}, l))));
+  const bars = $("rolloutBars"); bars.replaceChildren();
+  const names = [...new Set(o.by_ruleset.map((r) => r.ruleset))];
+  for (const name of names) {
+    const h = o.by_ruleset.find((r) => r.ruleset === name && r.decision === "high_risk")?.count || 0;
+    const l = o.by_ruleset.find((r) => r.ruleset === name && r.decision === "low_risk")?.count || 0;
+    const tot = h + l || 1;
+    const rs = c.rulesets[name];
+    bars.append(el("div", { style: "margin-top:12px" },
+      el("span", { className: "mono" }, name), " ", chip(`${fmt(h + l)} scores`),
+      el("div", { className: "bar" }, el("i", { className: "h", style: `width:${h / tot * 100}%` }), el("i", { className: "l", style: `width:${l / tot * 100}%` })),
+      el("span", { className: "muted", style: "font-size:12px" }, `${Math.round(h / tot * 100)}% high risk` + (rs ? ` · ceiling ${rs.requested_to_revenue_ceiling * 100}% of revenue` : ""))));
+  }
+  const s = o.shadow, parts = [`Active: ${c.active_ruleset}.`];
+  parts.push(c.canary_ruleset ? `Canary: ${c.canary_ruleset} decides for ${c.canary_percent}% of application IDs (stable per ID).` : "No canary.");
+  parts.push(c.shadow_ruleset ? `Shadow: ${c.shadow_ruleset} scored alongside, never returned: ${fmt(s.decisions)} runs, ${fmt(s.disagreements)} disagreements, ${fmt(s.failures)} failures.` : "No shadow ruleset.");
+  parts.push("Rollback is changing ACTIVE_RULESET; no rebuild.");
+  $("rolloutNote").textContent = parts.join(" ");
+}
+
+function renderRecent(rows) {
+  const t = $("recent"); t.replaceChildren();
+  t.append(el("tr", {}, ...["When", "Application", "Employees", "Revenue", "Requested", "Decision", "Factors", "Ruleset", "Image"].map((h) => el("th", {}, h))));
+  if (!rows.length) t.append(el("tr", {}, el("td", { colSpan: 9, className: "muted" }, "Nothing scored yet. Use the form above.")));
+  for (const r of rows) t.append(el("tr", {},
+    el("td", {}, r.scored_at ? new Date(r.scored_at).toLocaleTimeString() : ""),
+    el("td", { className: "mono" }, r.application_id), el("td", {}, fmt(r.employees)),
+    el("td", {}, fmt(r.annual_revenue)), el("td", {}, fmt(r.requested_amount)),
+    el("td", {}, chip(r.decision, r.decision === "high_risk" ? "bad" : "good")),
+    el("td", {}, r.risk_factors.map((f) => chip(f))), el("td", { className: "mono" }, r.ruleset_version), el("td", { className: "mono" }, r.image_version)));
+}
+
+function renderMonitoring(m) {
+  const p = m.prometheus, a = m.alertmanager;
+  const prom = $("prom"); prom.replaceChildren();
+  if (!p.configured) prom.append("Not wired to this deployment (PROMETHEUS_URL unset).");
+  else if (!p.reachable) prom.append(chip("unreachable", "bad"));
+  else {
+    const up = p.targets.filter((t) => t.health === "up").length;
+    prom.append(el("div", {}, chip(`${up}/${p.targets.length} targets up`, up === p.targets.length && up ? "good" : "bad"), " ", chip(`${p.rules.length} alert rules loaded`)));
+    const tbl = el("table", { style: "margin-top:10px" });
+    for (const r of p.rules) tbl.append(el("tr", {}, el("td", { className: "mono" }, r.name),
+      el("td", {}, chip(r.severity || "", r.severity === "page" ? "bad" : "warn")), el("td", {}, chip(r.state, r.state === "firing" ? "bad" : r.state === "pending" ? "warn" : "good"))));
+    prom.append(tbl);
+  }
+  const am = $("am"); am.replaceChildren();
+  if (!a.configured) am.append("Not wired to this deployment (ALERTMANAGER_URL unset).");
+  else if (!a.reachable) am.append(chip("unreachable", "bad"));
+  else {
+    am.append(chip("Alertmanager " + (a.version || ""), "good"), " ", chip(`${a.active_alerts.length} active`, a.active_alerts.length ? "warn" : ""));
+    for (const x of a.active_alerts) am.append(el("div", { style: "margin-top:6px" }, el("span", { className: "mono" }, x.name), " ", chip(x.severity || ""), " ", chip(x.state)));
+    am.append(el("p", { style: "font-size:13px" }, "Routes: severity=page repeats every 30m, ticket every 12h, both to a Discord channel."));
+  }
+  $("testAlert").disabled = !a.configured;
+}
+
+function renderStack(o, m) {
+  const s = o.schema, pg = s.dialect === "postgresql";
+  const p = m.prometheus, a = m.alertmanager;
+  const items = [
+    ["FastAPI + Pydantic", true, "Typed request validation (422 on bad input), API-key auth, OpenAPI at /docs. This page is served by it.", "/docs"],
+    [pg ? "PostgreSQL " + (s.server_version || "") : "SQLite (local mode)", pg, "Applications plus append-only score_history, read live in panel 3.", null],
+    ["SQLAlchemy + Alembic", !!s.revision, `Schema migrations applied on startup. Current revision: ${s.revision || "unknown"}.`, null],
+    ["Docker + Compose", true, `Image version recorded with every score: ${o.config.image_version}.`, null],
+    ["Caddy", o.behind_proxy, o.behind_proxy ? "This request arrived through the reverse proxy (HTTPS when a domain is set)." : "Not in front of this request (local run). Config: deploy/Caddyfile.", null],
+    ["Prometheus", p.configured && p.reachable, p.configured ? "Scraping /metrics; 8 alert rules for errors, drift and shadow disagreement." : "Config in ops/prometheus/.", null],
+    ["Alertmanager + Discord", a.configured && a.reachable, "Routes by severity to Discord. Use Send test alert to see it land.", null],
+    ["Shadow + canary rollout", !!(o.config.shadow_ruleset || o.config.canary_ruleset), "Trial a candidate ruleset silently, then split traffic, with config-only rollback.", null],
+    ["Structured JSON logs", true, "One line per request, metadata only: no financial values or identifiers beyond request ID.", null],
+    ["pytest + GitHub Actions", false, "Test suite covers scoring thresholds, validation, auth, persistence failure, log privacy. CI config in .github/workflows/ci.yml.", null],
+    ["Terraform (AWS)", false, "Production design as code. Validated, deliberately not applied; this VPS stands in for it.", null],
+    ["Notebook + DESIGN.md", false, "Data profile, storage recommendation, HTTP contract, operating plan, trade-offs.", null],
+  ];
+  $("stack").replaceChildren(...items.map(([name, live, note, href]) =>
+    el("div", { className: "tool" }, el("b", {}, href ? el("a", { href }, name) : name), " ",
+      chip(live ? "live here" : "in the repo", live ? "good" : ""), el("p", {}, note))));
+}
+
+async function refresh() {
+  const [{ res, body: o }, { body: m }] = await Promise.all([api("/console/api/overview"), api("/console/api/monitoring")]);
+  if (res.status === 401 || res.status === 503) return showGate(res.status === 401 ? "That key was not accepted." : "Authentication is not configured on this server.");
+  if (!res.ok || !o) return;
+  renderRollout(o); renderRecent(o.recent); renderMonitoring(m); renderStack(o, m);
+  $("refreshed").textContent = "updated " + new Date().toLocaleTimeString();
+}
+
+$("testAlert").onclick = async () => {
+  $("testStatus").textContent = "Sending…";
+  const { res, body } = await api("/console/api/test-alert", { method: "POST" });
+  $("testStatus").textContent = res.ok ? "Sent. It appears in Alertmanager now and in Discord after the group wait (~10s)." : (body?.detail || "failed");
+  setTimeout(refresh, 1500);
+};
+
+function showGate(message = "") {
+  $("app").hidden = true; $("gate").hidden = false; $("keyErr").textContent = message;
+  try { sessionStorage.removeItem("apiKey"); } catch {}
+}
+$("keyGo").onclick = () => { KEY = $("key").value.trim(); start(); };
+$("key").onkeydown = (e) => { if (e.key === "Enter") $("keyGo").click(); };
+
+let timer;
+async function start() {
+  if (!KEY) return showGate();
+  const { res } = await api("/console/api/overview");
+  if (!res.ok) return showGate(res.status === 503 ? "Authentication is not configured on this server." : "That key was not accepted.");
+  try { sessionStorage.setItem("apiKey", KEY); } catch {}
+  $("gate").hidden = true; $("app").hidden = false;
+  await refresh();
+  clearInterval(timer); timer = setInterval(refresh, 10000);
+}
+start();
+</script>
+</body>
+</html>

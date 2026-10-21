@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY prototype ./prototype
+COPY demo.mp4 ./demo/demo.mp4
 
 ARG IMAGE_VERSION=dev
 ENV IMAGE_VERSION=$IMAGE_VERSION

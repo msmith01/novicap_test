@@ -22,7 +22,7 @@ python -m uvicorn prototype.risk_scoring_prototype:app --reload
 
 Scores are stored in a local SQLite file (`scores.db`) unless `DATABASE_URL` points at Postgres (`postgresql+psycopg://user:pass@host/db`). `/score` requires an `X-API-Key` header matching one of the comma-separated `API_KEYS`; with none configured it returns 503. `GET /healthz` is open. `GET /metrics` (API key required) serves Prometheus metrics. `ACTIVE_RULESET` selects the deciding ruleset (rollback) `SHADOW_RULESET` trials a candidate without affecting responses, and `CANARY_RULESET` + `CANARY_PERCENT` let it decide for a share of applications; see DESIGN.md. `docker compose up` also starts Prometheus on port 9090 with the alert rules in `ops/prometheus/`, and Alertmanager on 9093. AWS infrastructure as code is in `infra/aws/` (validated, not applied); single-VPS deployment is in `deploy/VPS.md`. Alerts go to Discord: copy `ops/alertmanager/discord_webhook.example` to `discord_webhook` and set the URL. The demo narration text is in `demo/narration.txt`.
 
-Open `http://127.0.0.1:8000/docs` (use Authorize with the key) to try the API. Example request:
+Open `http://127.0.0.1:8000/` for the operator console (`/#key=<key>` skips the prompt; see deploy/VPS.md), or `http://127.0.0.1:8000/docs` (use Authorize with the key) to try the API. Example request:
 
 ```json
 {"application_id":"A-123","employees":10,"annual_revenue":1000000,"requested_amount":100000}
@@ -44,6 +44,7 @@ Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/
 ## Project map
 
 - `prototype/risk_scoring_prototype.py`: FastAPI app, auth, logging, request model, and scoring rules.
+- `prototype/console.py` + `console.html`: operator console and its read endpoints.
 - `prototype/storage.py`: SQLAlchemy models and `save_score`; applies Alembic migrations on startup.
 - `prototype/migrations/`: Alembic migrations (add one per schema change; `alembic -x url=<db> upgrade head` also works from the CLI).
 - `prototype/replay.py`: replays a CSV through the API's validation and scorer; prints aggregate counts and optionally writes per-row results.

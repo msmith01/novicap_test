@@ -29,6 +29,8 @@ services:
       SHADOW_RULESET: ${SHADOW_RULESET:-}
       CANARY_RULESET: ${CANARY_RULESET:-}
       CANARY_PERCENT: ${CANARY_PERCENT:-0}
+      PROMETHEUS_URL: http://prometheus:9090
+      ALERTMANAGER_URL: http://alertmanager:9093
     depends_on:
       db:
         condition: service_healthy

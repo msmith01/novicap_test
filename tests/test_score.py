@@ -368,3 +368,29 @@ def test_canary_zero_and_hundred_percent():
 def test_invalid_canary_percent_fails_at_startup():
     with pytest.raises(ValueError):
         _canary_client(101)
+
+
+def test_console_page_is_public_but_data_needs_a_key():
+    page = TestClient(create_app(session_factory=sessions, api_keys=[KEY])).get("/")
+    assert page.status_code == 200 and "Risk Scoring Console" in page.text
+    anonymous = TestClient(create_app(session_factory=sessions, api_keys=[KEY]))
+    assert anonymous.get("/console/api/overview").status_code == 401
+    assert anonymous.get("/console/api/monitoring").status_code == 401
+    assert anonymous.post("/console/api/test-alert").status_code == 401
+
+
+def test_console_overview_reads_back_scores():
+    score(application_id="CONSOLE-1", employees=100)
+    body = client.get("/console/api/overview").json()
+    assert body["config"]["image_version"] == "test-image"
+    assert body["totals"]["scored"] >= 1
+    assert body["recent"][0]["application_id"] == "CONSOLE-1"
+    assert body["recent"][0]["decision"] == "high_risk"
+    assert body["schema"]["revision"]
+
+
+def test_console_monitoring_and_test_alert_degrade_without_backends():
+    monitoring = client.get("/console/api/monitoring").json()
+    assert monitoring["prometheus"] == {"configured": False}
+    assert monitoring["alertmanager"] == {"configured": False}
+    assert client.post("/console/api/test-alert").status_code == 503

@@ -21,6 +21,8 @@ services:
       SHADOW_RULESET: ${SHADOW_RULESET:-}
       CANARY_RULESET: ${CANARY_RULESET:-}
       CANARY_PERCENT: ${CANARY_PERCENT:-0}
+      PROMETHEUS_URL: http://prometheus:9090
+      ALERTMANAGER_URL: http://alertmanager:9093
       DATABASE_URL: postgresql+psycopg://risk:risk-local-only@db:5432/risk
     ports:
       - "8000:8000"

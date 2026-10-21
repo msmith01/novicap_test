@@ -23,3 +23,12 @@ monitoring; what you give up is managed Postgres backups, multi-AZ and autoscali
 
 Rollout and rollback are environment variables (`SHADOW_RULESET`, `CANARY_RULESET`,
 `CANARY_PERCENT`, `ACTIVE_RULESET`); edit `.env` and run `docker compose -f docker-compose.vps.yml up -d`.
+
+## The console
+
+`http://<server>/` serves the operator console (score form, rollout split, rows read back from Postgres,
+Prometheus rules, Alertmanager and a test-alert button, the stack inventory and the demo video). The page is
+public but every data call needs the API key. Send the interviewer one link that carries the key in the
+fragment, which browsers never send to the server: `http://<server>/#key=<API_KEYS value>`. Rotate the key
+afterwards by editing `.env` and `ops/prometheus/api_key`, then `docker compose -f docker-compose.vps.yml up -d`.
+Anyone holding the key can write scores to the database, so use a key made for the demo.

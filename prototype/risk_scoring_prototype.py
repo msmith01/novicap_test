@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from prototype.console import register_console
 from prototype.storage import make_session_factory, save_score
 
 
@@ -291,6 +292,27 @@ def create_app(
         http_request.state.risk_factors = result.risk_factors
         return result
 
+    register_console(
+        app,
+        sessions=sessions,
+        require_api_key=require_api_key,
+        get_session=get_session,
+        registry=metrics.registry,
+        config={
+            "image_version": image,
+            "active_ruleset": active,
+            "shadow_ruleset": shadow,
+            "canary_ruleset": canary,
+            "canary_percent": percent,
+            "rulesets": {
+                name: {
+                    "revenue_per_employee_floor": r.revenue_per_employee_floor,
+                    "requested_to_revenue_ceiling": r.requested_to_revenue_ceiling,
+                }
+                for name, r in RULESETS.items()
+            },
+        },
+    )
     return app
 
 
