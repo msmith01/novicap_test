@@ -20,7 +20,7 @@ $env:API_KEYS = "dev-key"
 python -m uvicorn prototype.risk_scoring_prototype:app --reload
 ```
 
-Scores are stored in a local SQLite file (`scores.db`) unless `DATABASE_URL` points at Postgres (`postgresql+psycopg://user:pass@host/db`). `/score` requires an `X-API-Key` header matching one of the comma-separated `API_KEYS`; with none configured it returns 503. `GET /healthz` is open. `GET /metrics` (API key required) serves Prometheus metrics. `ACTIVE_RULESET` selects the deciding ruleset (rollback) `SHADOW_RULESET` trials a candidate without affecting responses, and `CANARY_RULESET` + `CANARY_PERCENT` let it decide for a share of applications; see DESIGN.md. `docker compose up` also starts Prometheus on port 9090 with the alert rules in `ops/prometheus/`, and Alertmanager on 9093. AWS infrastructure as code is in `infra/aws/` (validated, not applied); single-VPS deployment is in `deploy/VPS.md`. Alerts go to Discord: copy `ops/alertmanager/discord_webhook.example` to `discord_webhook` and set the URL. The demo narration text is in `demo/narration.txt`.
+Scores are stored in a local SQLite file (`scores.db`) unless `DATABASE_URL` points at Postgres (`postgresql+psycopg://user:pass@host/db`). `/score` requires an `X-API-Key` header matching one of the comma-separated `API_KEYS`; with none configured it returns 503. `GET /healthz` is open. `GET /metrics` (API key required) serves Prometheus metrics. `ACTIVE_RULESET` selects the deciding ruleset (rollback) `SHADOW_RULESET` trials a candidate without affecting responses, and `CANARY_RULESET` + `CANARY_PERCENT` let it decide for a share of applications; see DESIGN.md. `docker compose up` also starts Prometheus on port 9090 with the alert rules in `ops/prometheus/`, and Alertmanager on 9093. AWS infrastructure as code is in `infra/aws/` (validated, not applied); single-VPS deployment is in `deploy/VPS.md`. Alerts go to Discord: copy `ops/alertmanager/discord_webhook.example` to `discord_webhook` and set the URL. The tour video's captions are in `demo/narration.txt`.
 
 Open `http://127.0.0.1:8000/` for the operator console (`/#key=<key>` skips the prompt; see deploy/VPS.md), or `http://127.0.0.1:8000/docs` (use Authorize with the key) to try the API. Example request:
 
@@ -43,9 +43,16 @@ Then open `http://127.0.0.1:8000/docs`. The Docker build context excludes `data/
 
 ## Showcase app (Streamlit)
 
-`streamlit_app/app.py` is the shareable deliverable: the real API, canary/shadow rollout and metrics run live
-in-process, and a timestamped recording of the compose stack (Postgres, Prometheus, Alertmanager) sits in
-`streamlit_app/evidence/`. Run it with `python -m pip install -r streamlit_app/requirements.txt` then
+`streamlit_app/app.py` is the shareable deliverable. A 50-second captioned tour (`demo.mp4`, rows from the export,
+no terminal output) autoplays muted at the top. Beside it a connection panel shows the app is talking to the
+real FastAPI service: uvicorn serves the API on a localhost port inside the app and every call goes over HTTP
+(health, OpenAPI, auth refused without a key and accepted with one, each with status and latency), plus a
+"Run the tour live" button that repeats the video's calls (401, 200 low, 200 high, 422) against it. Set
+`API_BASE_URL` and `API_KEY` to point the same page at a deployed API instead. Canary/shadow rollout and metrics run
+live; a timestamped recording of the compose stack (Postgres, Prometheus, Alertmanager) sits in
+`streamlit_app/evidence/`. The hosted Data tab reads `streamlit_app/evidence/applications_anonymised.csv` (the same 196 rows
+without company name, tax ID and notes; `python scripts/anonymise_data.py` regenerates it); locally it uses the full export.
+Re-record the tour with `python scripts/record_demo.py` (needs `playwright`, `imageio-ffmpeg`, Chrome). Run it with `python -m pip install -r streamlit_app/requirements.txt` then
 `python -m streamlit run streamlit_app/app.py`. Refresh the recording with
 `python scripts/capture_evidence.py --key <key>` while the stack is up.
 
@@ -68,13 +75,13 @@ in-process, and a timestamped recording of the compose stack (Postgres, Promethe
 
 ## Resume checklist
 
-Done: automated tests (43; `python -m pip install -r requirements-dev.txt`, then `python -m pytest`); Postgres-backed persistence (applications plus append-only `score_history` with request ID, ruleset and image versions); API-key auth; privacy-safe JSON logs; Prometheus metrics, 8 alert rules and Alertmanager (compose); shadow and canary rulesets with config rollback; ingest and replay tools; Dockerfile and compose stack; Terraform for AWS (validated, not applied); single-VPS compose and guide; narrated demo video; `Brief.pdf` highlighted with the completed points. Local commits are not yet pushed.
+Done: automated tests (43; `python -m pip install -r requirements-dev.txt`, then `python -m pytest`); Postgres-backed persistence (applications plus append-only `score_history` with request ID, ruleset and image versions); API-key auth; privacy-safe JSON logs; Prometheus metrics, 8 alert rules and Alertmanager (compose); shadow and canary rulesets with config rollback; ingest and replay tools; Dockerfile and compose stack; Terraform for AWS (validated, not applied); single-VPS compose and guide; captioned tour video recorded from the running service; `Brief.pdf` highlighted with the completed points. Local commits are not yet pushed.
 
 Still open, in the order to do them next:
 
 1. **Push to GitHub (blocked on you):** `gh` login for `msmith01` is expired. Run `C:\Users\MattO\scoop\apps\gh\2.96.0\bin\gh.exe auth login -h github.com`, then create a private repo and push; that also runs CI for the first time.
 2. **Discord webhook (deferred by choice; see DESIGN.md, Monitoring):** put the URL in `ops/alertmanager/discord_webhook` (git-ignored; template is `.example`), restart Alertmanager, and send a test alert. Until then that file holds a placeholder.
-3. **Voiceover (optional):** `demo/narration.txt` is the script (one line per scene). The current video uses the Windows Zira voice; if ElevenLabs clips are supplied, re-mux them. The video was generated by a script kept outside the repo; re-creating it means re-running the real commands against the compose stack.
+3. **Voiceover (optional):** the tour is silent with burned-in captions so it can autoplay; `demo/narration.txt` lists them. It is recorded by `scripts/record_demo.py`.
 4. **VPS deploy (optional):** follow `deploy/VPS.md`; needs the server and its SSH details, and a DNS name for HTTPS. Untested on a real server.
 5. **Duplicate application IDs / missing employee counts** need answers from the data source owner; see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 6. **Not built:** dashboards, thresholds tuned on real traffic, automated canary promotion/abort, production identity (API keys are a stopgap), AWS apply.

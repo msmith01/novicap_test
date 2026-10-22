@@ -68,4 +68,4 @@ Status key: **Done** = built and run locally; **Partial** = built but not run in
 - Terraform for AWS ([infra/aws/main.tf](infra/aws/main.tf)): validated, never applied.
 - Single-VPS deployment with Caddy HTTPS ([docker-compose.vps.yml](docker-compose.vps.yml), [deploy/VPS.md](deploy/VPS.md)).
 - CI workflow ([.github/workflows/ci.yml](.github/workflows/ci.yml)): defined, never run.
-- Narrated walkthrough: [demo.mp4](demo.mp4).
+- Captioned walkthrough: [demo.mp4](demo.mp4), recorded from the running service with rows from the export and autoplayed at the top of the Streamlit app.

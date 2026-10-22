@@ -2,6 +2,21 @@
 
 Newest entry first. One entry per working message: what was done, what was verified, what is next.
 
+## Step 16 — 2026-10-22: tour video rebuilt, API connection shown in the app
+
+**Done**
+- `scripts/record_demo.py` records a 50 s silent captioned tour with Playwright (Chrome) against the real service: /docs (RAW-0073 low, RAW-0043 high, RAW-0156 422), the console after replaying all 196 rows over HTTP, and a closing card with the counts returned by the API (158 / 13 / 25, asserted). Old narrated video used made-up numbers and terminal output; replaced (`demo.mp4` and `streamlit_app/evidence/demo.mp4`).
+- `streamlit_app/app.py`: tour autoplays muted at the top; uvicorn serves the real FastAPI app on localhost and all calls use httpx over that socket; connection panel (health, OpenAPI, 401 without key, 200 with key, latency) and a "Run the tour live" button; presets are the real rows; generic GET tester. `API_BASE_URL`/`API_KEY` repoint it at a deployed API. `uvicorn` added to `streamlit_app/requirements.txt`.
+- Added `streamlit_app/evidence/applications_anonymised.csv` (company name, tax ID, notes dropped) via `scripts/anonymise_data.py` so the Data tab works on Streamlit Cloud; replay on it gives the same 158 / 13 / 25.
+- Verified: 46 tests pass; AppTest has no exceptions; in Chrome the video autoplays and all four connection checks pass.
+
+**Not done:** nothing committed or pushed. Pushing publishes the anonymised CSV and the new video to the (private) repo and redeploys the app.
+
+## Step 15 — 2026-10-22: pre-send review of what is left
+
+- Reviewed PROGRESS.md, README resume checklist and memory. Local `main` is clean and has no unpushed commits vs `origin/main`. No code changes.
+- Remaining before sending: confirm the live Streamlit app works and the interviewer can open it; decide on Discord alerting (deferred); final README/link pass; write the cover email.
+
 ## Step 14 — 2026-10-21: leaner Streamlit app (7 tabs -> 4)
 
 **Done**

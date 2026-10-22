@@ -1,16 +1,21 @@
 """Streamlit showcase of the working-capital risk scoring project.
 
-The scoring API, rulesets, canary/shadow logic, persistence and Prometheus metrics run live inside this
-app (FastAPI driven through its test client, SQLite in memory). Postgres, Prometheus and Alertmanager
-cannot run on a free host, so the monitoring section shows a timestamped snapshot taken from the real
-docker compose stack by scripts/capture_evidence.py.
+The scoring API, rulesets, canary/shadow logic, persistence and Prometheus metrics run live: the real
+FastAPI app is served over HTTP by uvicorn on a localhost port inside this process (SQLite in memory) and
+every call below goes through that socket with httpx, so the page can show that it is connected. Set
+API_BASE_URL (and API_KEY) to point the same page at a deployed API instead. Postgres, Prometheus and
+Alertmanager cannot run on a free host, so the monitoring section shows a timestamped snapshot taken from
+the real docker compose stack by scripts/capture_evidence.py.
 """
 
 import json
 import os
 import random
 import re
+import socket
 import sys
+import threading
+import time
 from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")  # the module-level app in the scorer must not write a file
@@ -20,15 +25,17 @@ for root in (HERE, HERE.parent):  # repo checkout (Streamlit Cloud) or assembled
     if (root / "prototype").is_dir() and str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
+import httpx
 import pandas as pd
 import streamlit as st
-from fastapi.testclient import TestClient
+import uvicorn
 
 from prototype.risk_scoring_prototype import ScoreRequest, create_app, score_application
 from prototype.storage import make_session_factory
 
-KEY = "showcase"
+KEY = os.environ.get("API_KEY", "showcase")
 HEADERS = {"X-API-Key": KEY}
+EXTERNAL_API = os.environ.get("API_BASE_URL", "").rstrip("/")
 ACTIVE, CANDIDATE = "2026-10-v1", "2026-11-v2-candidate"
 REPO_URL = os.environ.get("REPO_URL", "")
 
@@ -52,21 +59,86 @@ def plain_links(markdown: str) -> str:
     return re.sub(r"\[([^\]]+)\]\((?!https?://)[^)]*\)", r"\1", markdown)
 
 
+class EmbeddedApi:
+    """The real FastAPI app, served by uvicorn on a free localhost port in a background thread."""
+
+    def __init__(self) -> None:
+        with socket.socket() as probe_socket:
+            probe_socket.bind(("127.0.0.1", 0))
+            self.port = probe_socket.getsockname()[1]
+        app = create_app(
+            session_factory=make_session_factory("sqlite://"),
+            api_keys=[KEY],
+            image_version="streamlit-showcase",
+            active_ruleset=ACTIVE,
+            canary_ruleset=CANDIDATE,
+            canary_percent=50,
+            shadow_ruleset=CANDIDATE,
+        )
+        self.server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
+        self.thread = threading.Thread(target=self.server.run, daemon=True)
+        self.thread.start()
+        for _ in range(100):  # up to 10 s for the socket to open
+            if self.server.started:
+                break
+            time.sleep(0.1)
+        self.base_url = f"http://127.0.0.1:{self.port}"
+
+    def stop(self) -> None:
+        self.server.should_exit = True
+        self.thread.join(timeout=5)
+
+
 @st.cache_resource
-def get_client() -> TestClient:
-    app = create_app(
-        session_factory=make_session_factory("sqlite://"),
-        api_keys=[KEY],
-        image_version="streamlit-showcase",
-        active_ruleset=ACTIVE,
-        canary_ruleset=CANDIDATE,
-        canary_percent=50,
-        shadow_ruleset=CANDIDATE,
-    )
-    return TestClient(app)
+def get_api() -> EmbeddedApi | None:
+    return None if EXTERNAL_API else EmbeddedApi()
+
+
+@st.cache_resource
+def get_client() -> httpx.Client:
+    api = get_api()
+    return httpx.Client(base_url=EXTERNAL_API or api.base_url, timeout=10)
+
+
+def reset_api() -> None:
+    if (api := get_api()) is not None:
+        api.stop()
+    get_client().close()
+    get_client.clear()
+    get_api.clear()
 
 
 client = get_client()
+API_URL = str(client.base_url).rstrip("/")
+
+
+def probe(label: str, method: str, path: str, expect: int, headers: dict | None = None, json_body: dict | None = None) -> dict:
+    """One real HTTP round trip to the API, timed, for the connection panel."""
+    started = time.perf_counter()
+    try:
+        response = client.request(method, path, headers=headers, json=json_body)
+        got, detail = response.status_code, response
+    except httpx.HTTPError as exc:
+        got, detail = type(exc).__name__, None
+    return {"check": label, "request": f"{method} {path}", "expected": expect, "got": got,
+            "ms": round((time.perf_counter() - started) * 1000, 1), "ok": got == expect, "response": detail}
+
+
+def connection_checks() -> list[dict]:
+    return [
+        probe("GET /healthz (open)", "GET", "/healthz", 200),
+        probe("GET /openapi.json (contract)", "GET", "/openapi.json", 200),
+        probe("GET /metrics, no key: refused", "GET", "/metrics", 401),
+        probe("GET /metrics, with key: allowed", "GET", "/metrics", 200, HEADERS),
+    ]
+
+
+# Real rows from the export (request fields only; no company name or tax ID). The tour video uses the same rows.
+SAMPLES = {
+    "RAW-0073: low risk": {"application_id": "RAW-0073", "employees": 10, "annual_revenue": 1441971.18, "requested_amount": 175311.57, "source_system": "legacy_crm"},
+    "RAW-0043: high risk, both rules": {"application_id": "RAW-0043", "employees": 19, "annual_revenue": 3225.09, "requested_amount": 280516.32, "source_system": "new_partner_feed"},
+    "RAW-0156: employee count missing (422)": {"application_id": "RAW-0156", "employees": None, "annual_revenue": 4411183.42, "requested_amount": 414549.77, "source_system": "legacy_crm"},
+}
 
 
 def overview() -> dict:
@@ -81,9 +153,11 @@ def snapshot() -> dict | None:
 
 
 def find_data() -> Path | None:
-    for base in (HERE.parent, HERE):
-        if (base / "data" / "raw_applications.csv").is_file():
-            return base / "data" / "raw_applications.csv"
+    """The full export when present locally, else the copy without company names and tax IDs."""
+    for path in (HERE.parent / "data" / "raw_applications.csv", HERE / "evidence" / "applications_anonymised.csv",
+                 HERE / "applications_anonymised.csv"):
+        if path.is_file():
+            return path
     return None
 
 
@@ -122,17 +196,56 @@ def schema_table() -> pd.DataFrame:
 
 st.title("Working Capital Risk Scoring")
 st.caption("A rules-based risk score turned into a validated, stored, observable service. "
-           "Live sections run the real FastAPI app in this process; recorded sections are marked.")
+           "Live sections call the real FastAPI app over HTTP; recorded sections are marked.")
 if REPO_URL:
     st.sidebar.link_button("Source repository", REPO_URL)
 st.sidebar.markdown(
-    "**Live here:** FastAPI, Pydantic, SQLAlchemy, canary and shadow rulesets, Prometheus metrics.\n\n"
+    "**Live here:** FastAPI served by uvicorn, Pydantic, SQLAlchemy, canary and shadow rulesets, Prometheus metrics.\n\n"
     "**Recorded from the real stack:** Postgres, Prometheus, Alertmanager.\n\n"
     "**Repo only:** Terraform, CI, Caddy VPS compose."
 )
 if st.sidebar.button("Reset live database"):
-    get_client.clear()
+    reset_api()
     st.rerun()
+
+# ---------------------------------------------------------------- Tour video + live API connection
+video_col, status_col = st.columns([3, 2], gap="large")
+with video_col:
+    st.markdown("**Tour** (rows from the export, through the live API)")
+    tour = find("demo.mp4")
+    if tour:
+        st.video(str(tour), autoplay=True, muted=True, loop=True)
+    else:
+        st.info("demo.mp4 is not bundled in this deployment.")
+with status_col:
+    checks = connection_checks()
+    if all(c["ok"] for c in checks):
+        st.success(f"**Connected to the FastAPI service** at `{API_URL}`  \n"
+                   + ("served by uvicorn inside this app" if not EXTERNAL_API else "external deployment"))
+    else:
+        st.error(f"**Not connected** to `{API_URL}`. See the checks below.")
+    spec = next((c["response"].json() for c in checks if c["request"].endswith("openapi.json") and c["ok"]), None)
+    if spec:
+        st.caption(f"{spec['info']['title']} · OpenAPI {spec['openapi']} · {len(spec['paths'])} documented paths · "
+                   f"interactive docs at `{API_URL}/docs`" + (" on the machine running this app" if not EXTERNAL_API else ""))
+    st.dataframe(pd.DataFrame([{"": "✅" if c["ok"] else "❌", "request": c["check"], "status": c["got"], "ms": c["ms"]}
+                               for c in checks]),
+                 width="stretch", hide_index=True)
+    if st.button("Run the tour live against the API", type="primary"):
+        steps = [
+            probe("GET /healthz", "GET", "/healthz", 200),
+            probe("POST /score, no key", "POST", "/score", 401, json_body=SAMPLES["RAW-0073: low risk"]),
+            probe("POST /score RAW-0073", "POST", "/score", 200, HEADERS, SAMPLES["RAW-0073: low risk"]),
+            probe("POST /score RAW-0043", "POST", "/score", 200, HEADERS, SAMPLES["RAW-0043: high risk, both rules"]),
+            probe("POST /score RAW-0156", "POST", "/score", 422, HEADERS, SAMPLES["RAW-0156: employee count missing (422)"]),
+            probe("GET /metrics", "GET", "/metrics", 200, HEADERS),
+        ]
+        outcome = {401: "refused: no key", 422: "rejected, not imputed"}
+        st.dataframe(pd.DataFrame([{
+            "": "✅" if t["ok"] else "❌", "request": t["check"], "status": t["got"],
+            "result": (t["response"].json()["decision"] if t["request"] == "POST /score" and t["got"] == 200
+                       else outcome.get(t["got"], "")),
+            "ms": t["ms"]} for t in steps]), width="stretch", hide_index=True)
 
 tab_brief, tab_data, tab_api, tab_ops = st.tabs(["Answers to the brief", "Data", "Try the API", "Rollout & monitoring"])
 
@@ -158,12 +271,6 @@ with tab_brief:
         st.markdown(plain_links(read_text("BRIEF_COVERAGE.md")))
     with st.expander("Open questions for the data owner"):
         st.markdown(plain_links(read_text("OPEN_QUESTIONS.md")))
-    with st.expander("Narrated demo video"):
-        video = find("demo.mp4")
-        if video:
-            st.video(str(video))
-        else:
-            st.info("demo.mp4 is not bundled in this deployment.")
 
 # ---------------------------------------------------------------- Data
 with tab_data:
@@ -177,7 +284,8 @@ with tab_data:
         dup_rows = int(raw.duplicated().sum())
         slash_dates = int(raw["incorporation_date"].str.contains("/").sum())
         st.subheader("What is in data/raw_applications.csv")
-        st.caption("Computed live from the file in the repo.")
+        st.caption("Computed live from the export. " + ("" if find_data().name == "raw_applications.csv" else
+                   "This hosted copy leaves out company names, tax IDs and notes; every other column is unchanged."))
         a, b, c, d = st.columns(4)
         a.metric("Rows", len(raw))
         b.metric("Unique application IDs", raw["application_id"].nunique(), f"{dup_rows} exact duplicate rows", delta_color="off")
@@ -224,17 +332,15 @@ border-radius:4px;padding:8px 12px;margin:4px 0 12px}
 """,
         unsafe_allow_html=True,
     )
-    st.caption("Calls go to the real FastAPI app running inside this Streamlit process: auth, validation, scoring, persistence, metrics.")
+    st.caption(f"Calls go over HTTP to the real FastAPI service at `{API_URL}`: auth, validation, scoring, persistence, metrics. "
+               "The examples are rows from the export.")
 
     left, right = st.columns([3, 2])
     with left:
         api_key = st.text_input("X-API-Key (header, required)", value=KEY, type="password",
                                 help="Same idea as Swagger's Authorize button. Try an empty or wrong key to see the 401.")
         presets = {
-            "Healthy": {"application_id": "DEMO-1001", "employees": 10, "annual_revenue": 1000000, "requested_amount": 100000, "source_system": "manual_entry"},
-            "Thin revenue per employee": {"application_id": "DEMO-1002", "employees": 100, "annual_revenue": 1000000, "requested_amount": 100000, "source_system": "legacy_crm"},
-            "Over-asking": {"application_id": "DEMO-1003", "employees": 10, "annual_revenue": 1000000, "requested_amount": 500000, "source_system": "new_partner_feed"},
-            "Both rules trip": {"application_id": "DEMO-1004", "employees": 100, "annual_revenue": 1000000, "requested_amount": 500000, "source_system": "manual_entry"},
+            **SAMPLES,
             "Invalid: zero employees (422)": {"application_id": "DEMO-1005", "employees": 0, "annual_revenue": 1000000, "requested_amount": 100000},
             "Invalid: extra field (422)": {"application_id": "DEMO-1006", "employees": 10, "annual_revenue": 1000000, "requested_amount": 100000, "tax_id": "H12345678"},
         }
@@ -263,7 +369,8 @@ border-radius:4px;padding:8px 12px;margin:4px 0 12px}
             response = client.post("/score", json=payload, headers={"X-API-Key": api_key})
             compact = json.dumps(payload).replace("'", "'\\''")
             st.markdown("Curl")
-            st.code(f"curl -X POST 'https://<your-host>/score' \\\n  -H 'X-API-Key: <key>' \\\n  -H 'Content-Type: application/json' \\\n  -d '{compact}'", language="bash")
+            host = API_URL if EXTERNAL_API else "https://<your-host>"
+            st.code(f"curl -X POST '{host}/score' \\\n  -H 'X-API-Key: <key>' \\\n  -H 'Content-Type: application/json' \\\n  -d '{compact}'", language="bash")
             c1, c2 = st.columns([1, 4])
             c1.metric("Code", response.status_code)
             c2.json(response.json())
@@ -276,9 +383,15 @@ border-radius:4px;padding:8px 12px;margin:4px 0 12px}
             with st.expander("Response headers"):
                 st.json({k: v for k, v in response.headers.items() if k.lower() in ("content-type", "x-request-id")})
 
-    with st.expander("GET /healthz and the OpenAPI document"):
-        st.code(f"GET /healthz -> {client.get('/healthz').json()}", language="text")
-        st.json(client.get("/openapi.json").json(), expanded=False)
+    with st.expander("Other endpoints: GET /healthz, /metrics, /console/api/overview, /openapi.json"):
+        path = st.selectbox("GET", ["/healthz", "/metrics", "/console/api/overview", "/openapi.json"])
+        if st.button("Send GET request"):
+            got = client.get(path, headers={"X-API-Key": api_key})
+            st.metric("Code", got.status_code)
+            if "json" in got.headers.get("content-type", ""):
+                st.json(got.json(), expanded=False)
+            else:
+                st.code(got.text[:4000], language="text")
 
     st.markdown("**Stored scores** (append-only `score_history` joined to `applications`, newest first)")
     rows = overview()["recent"]
