@@ -1,4 +1,4 @@
-"""Streamlit showcase of the working-capital risk scoring project.
+"""Five-minute demo of the working-capital risk scoring project: one tab per point in the brief.
 
 The scoring API, rulesets, canary/shadow logic, persistence and Prometheus metrics run live: the real
 FastAPI app is served over HTTP by uvicorn on a localhost port inside this process (SQLite in memory) and
@@ -11,7 +11,6 @@ the real docker compose stack by scripts/capture_evidence.py.
 import json
 import os
 import random
-import re
 import socket
 import sys
 import threading
@@ -31,13 +30,13 @@ import streamlit as st
 import uvicorn
 
 from prototype.risk_scoring_prototype import ScoreRequest, create_app, score_application
-from prototype.storage import make_session_factory
+from prototype.storage import Base, make_session_factory
 
 KEY = os.environ.get("API_KEY", "showcase")
 HEADERS = {"X-API-Key": KEY}
 EXTERNAL_API = os.environ.get("API_BASE_URL", "").rstrip("/")
 ACTIVE, CANDIDATE = "2026-10-v1", "2026-11-v2-candidate"
-REPO_URL = os.environ.get("REPO_URL", "")
+REPO_URL = os.environ.get("REPO_URL", "https://github.com/msmith01/novicap_test")
 
 st.set_page_config(page_title="Working Capital Risk Scoring", page_icon="📊", layout="wide")
 
@@ -47,16 +46,6 @@ def find(name: str) -> Path | None:
         if (base / name).is_file():
             return base / name
     return None
-
-
-def read_text(name: str) -> str:
-    path = find(name)
-    return path.read_text(encoding="utf-8") if path else f"*{name} is not bundled in this deployment.*"
-
-
-def plain_links(markdown: str) -> str:
-    """Relative repo links would be dead on this host; keep the text."""
-    return re.sub(r"\[([^\]]+)\]\((?!https?://)[^)]*\)", r"\1", markdown)
 
 
 class EmbeddedApi:
@@ -183,96 +172,52 @@ def replay_counts(df: pd.DataFrame) -> dict:
     return counts
 
 
-def schema_table() -> pd.DataFrame:
-    schema = ScoreRequest.model_json_schema()
-    rows = []
-    for name, prop in schema["properties"].items():
-        kind = prop.get("type") or " | ".join(o.get("type", "?") for o in prop.get("anyOf", []))
-        rules = [f"{k} {v}" for k, v in prop.items() if k in ("exclusiveMinimum", "minLength", "pattern")]
-        rows.append({"field": name, "type": kind, "required": "yes" if name in schema["required"] else "no",
-                     "validation": ", ".join(rules) or "-"})
-    return pd.DataFrame(rows)
+SCENARIOS = {  # label: (body, send_key, expected status)
+    "Low-risk application": (SAMPLES["RAW-0073: low risk"], True, 200),
+    "High-risk application": (SAMPLES["RAW-0043: high risk, both rules"], True, 200),
+    "Employee count missing": (SAMPLES["RAW-0156: employee count missing (422)"], True, 422),
+    "Zero employees": ({"application_id": "DEMO-1005", "employees": 0, "annual_revenue": 1000000, "requested_amount": 100000}, True, 422),
+    "Unexpected field (tax_id)": ({"application_id": "DEMO-1006", "employees": 10, "annual_revenue": 1000000, "requested_amount": 100000, "tax_id": "H12345678"}, True, 422),
+    "No API key": (SAMPLES["RAW-0073: low risk"], False, 401),
+}
 
 
+def send(body: dict, with_key: bool) -> httpx.Response:
+    return client.post("/score", json=body, headers=HEADERS if with_key else {})
+
+
+def replay_check(rows: list[dict]) -> pd.DataFrame:
+    """Re-score each stored row from its stored inputs and ruleset: the weeks-later debugging path."""
+    out = []
+    for r in rows:
+        again = score_application(ScoreRequest(application_id=r["application_id"], employees=r["employees"],
+                                               annual_revenue=r["annual_revenue"], requested_amount=r["requested_amount"],
+                                               source_system=r["source_system"]), r["ruleset_version"])
+        out.append({"application_id": r["application_id"], "ruleset": r["ruleset_version"], "stored decision": r["decision"],
+                    "replayed": again.decision, "match": "✅" if again.decision == r["decision"] else "❌",
+                    "request_id": r["request_id"], "scored_at": r["scored_at"]})
+    return pd.DataFrame(out)
+
+
+# ---------------------------------------------------------------- Header
 st.title("Working Capital Risk Scoring")
-st.caption("A rules-based risk score turned into a validated, stored, observable service. "
-           "Live sections call the real FastAPI app over HTTP; recorded sections are marked.")
-if REPO_URL:
-    st.sidebar.link_button("Source repository", REPO_URL)
-st.sidebar.markdown(
-    "**Live here:** FastAPI served by uvicorn, Pydantic, SQLAlchemy, canary and shadow rulesets, Prometheus metrics.\n\n"
-    "**Recorded from the real stack:** Postgres, Prometheus, Alertmanager.\n\n"
-    "**Repo only:** Terraform, CI, Caddy VPS compose."
-)
+checks = connection_checks()
+if all(c["ok"] for c in checks):
+    st.success(f"FastAPI live at `{API_URL}` · {len(checks)}/{len(checks)} checks passed")
+else:
+    st.error(f"API not reachable at `{API_URL}`")
+st.sidebar.link_button("Source repository", REPO_URL)
 if st.sidebar.button("Reset live database"):
     reset_api()
     st.rerun()
+tour = find("demo.mp4")
+if tour:
+    with st.sidebar.expander("1-minute video tour"):
+        st.video(str(tour), muted=True, loop=True)
 
-# ---------------------------------------------------------------- Tour video + live API connection
-video_col, status_col = st.columns([3, 2], gap="large")
-with video_col:
-    st.markdown("**Tour** (rows from the export, through the live API)")
-    tour = find("demo.mp4")
-    if tour:
-        st.video(str(tour), autoplay=True, muted=True, loop=True)
-    else:
-        st.info("demo.mp4 is not bundled in this deployment.")
-with status_col:
-    checks = connection_checks()
-    if all(c["ok"] for c in checks):
-        st.success(f"**Connected to the FastAPI service** at `{API_URL}`  \n"
-                   + ("served by uvicorn inside this app" if not EXTERNAL_API else "external deployment"))
-    else:
-        st.error(f"**Not connected** to `{API_URL}`. See the checks below.")
-    spec = next((c["response"].json() for c in checks if c["request"].endswith("openapi.json") and c["ok"]), None)
-    if spec:
-        st.caption(f"{spec['info']['title']} · OpenAPI {spec['openapi']} · {len(spec['paths'])} documented paths · "
-                   f"interactive docs at `{API_URL}/docs`" + (" on the machine running this app" if not EXTERNAL_API else ""))
-    st.dataframe(pd.DataFrame([{"": "✅" if c["ok"] else "❌", "request": c["check"], "status": c["got"], "ms": c["ms"]}
-                               for c in checks]),
-                 width="stretch", hide_index=True)
-    if st.button("Run the tour live against the API", type="primary"):
-        steps = [
-            probe("GET /healthz", "GET", "/healthz", 200),
-            probe("POST /score, no key", "POST", "/score", 401, json_body=SAMPLES["RAW-0073: low risk"]),
-            probe("POST /score RAW-0073", "POST", "/score", 200, HEADERS, SAMPLES["RAW-0073: low risk"]),
-            probe("POST /score RAW-0043", "POST", "/score", 200, HEADERS, SAMPLES["RAW-0043: high risk, both rules"]),
-            probe("POST /score RAW-0156", "POST", "/score", 422, HEADERS, SAMPLES["RAW-0156: employee count missing (422)"]),
-            probe("GET /metrics", "GET", "/metrics", 200, HEADERS),
-        ]
-        outcome = {401: "refused: no key", 422: "rejected, not imputed"}
-        st.dataframe(pd.DataFrame([{
-            "": "✅" if t["ok"] else "❌", "request": t["check"], "status": t["got"],
-            "result": (t["response"].json()["decision"] if t["request"] == "POST /score" and t["got"] == 200
-                       else outcome.get(t["got"], "")),
-            "ms": t["ms"]} for t in steps]), width="stretch", hide_index=True)
+tab_data, tab_store, tab_api, tab_roll, tab_mon = st.tabs(["1 Data", "2 Storage", "3 API", "4 Rollout", "5 Monitoring"])
 
-tab_brief, tab_data, tab_api, tab_ops = st.tabs(["Answers to the brief", "Data", "Try the API", "Rollout & monitoring"])
-
-# ---------------------------------------------------------------- Answers to the brief
-with tab_brief:
-    st.markdown(
-        """
-| The brief asks | Short answer | Where |
-|---|---|---|
-| **Look at the data** | 196 rows; 4 IDs repeated as exact duplicates; 22 missing employee counts and 3 zero or negative; half the EBITDA missing; mixed date formats and label spellings. Cleaned only where unambiguous, nothing imputed. | *Data* tab |
-| **How to store it** | Postgres: `applications` plus an append-only `score_history` (inputs, decision, factors, ruleset and image version, request ID). Internal ID with the source ID kept non-unique. Raw CSVs immutable in S3. Alembic migrations. | DESIGN.md |
-| **Serve the prototype over HTTP** | FastAPI `POST /score`, Pydantic validation, bad data gets a 422 and is never imputed, score persisted before returning, API key, Dockerfile, pytest. | *Try the API* tab |
-| **Version and roll out safely** | Named rulesets, replay and diff, shadow scoring, percentage canary, rollback by changing `ACTIVE_RULESET` (no rebuild). | *Rollout & monitoring* |
-| **Know it is misbehaving without outcomes** | Eight Prometheus alerts on errors, unrecorded scores, input and high-risk-share drift, and shadow disagreement. These catch faults and drift, not predictive quality. | *Rollout & monitoring* |
-| **Debuggable weeks later** | JSON logs with metadata only (never raw values or `tax_id`); every score row can be replayed from its stored inputs and ruleset. | DESIGN.md |
-| **When Data Science sends a new prototype** | Only the ruleset changes. HTTP contract, storage and request boundary stay; new version goes replay, shadow, canary, promote. | *Rollout & monitoring* |
-"""
-    )
-    st.caption("Left out and next steps (real alert targets, tuned thresholds, ingest-to-Postgres load, AWS apply) are listed in DESIGN.md.")
-    with st.expander("DESIGN.md (architecture, trade-offs, operations, left out)"):
-        st.markdown(plain_links(read_text("DESIGN.md")))
-    with st.expander("Full coverage checklist with status per item"):
-        st.markdown(plain_links(read_text("BRIEF_COVERAGE.md")))
-    with st.expander("Open questions for the data owner"):
-        st.markdown(plain_links(read_text("OPEN_QUESTIONS.md")))
-
-# ---------------------------------------------------------------- Data
+# ---------------------------------------------------------------- 1 Data
 with tab_data:
     raw = load_raw()
     if raw is None:
@@ -283,140 +228,84 @@ with tab_data:
         employees = pd.to_numeric(raw["employees"], errors="coerce")
         dup_rows = int(raw.duplicated().sum())
         slash_dates = int(raw["incorporation_date"].str.contains("/").sum())
-        st.subheader("What is in data/raw_applications.csv")
-        st.caption("Computed live from the export. " + ("" if find_data().name == "raw_applications.csv" else
-                   "This hosted copy leaves out company names, tax IDs and notes; every other column is unchanged."))
         a, b, c, d = st.columns(4)
         a.metric("Rows", len(raw))
-        b.metric("Unique application IDs", raw["application_id"].nunique(), f"{dup_rows} exact duplicate rows", delta_color="off")
-        c.metric("Missing employees", missing("employees"), f"{int((employees <= 0).sum())} zero or negative", delta_color="off")
-        d.metric("Missing EBITDA", missing("annual_ebitda"), f"{missing('annual_ebitda') / len(raw):.0%} of rows", delta_color="off")
+        b.metric("Duplicate rows", dup_rows, f"{raw['application_id'].nunique()} unique IDs", delta_color="off")
+        c.metric("Employees missing or ≤ 0", missing("employees") + int((employees <= 0).sum()))
+        d.metric("EBITDA missing", f"{missing('annual_ebitda') / len(raw):.0%}")
 
-        st.markdown("**Findings and what I did about them**")
         st.dataframe(pd.DataFrame([
-            ("Repeated application IDs", f"{dup_rows} rows, identical in every column, different source systems", "Exact duplicates dropped in cleaning; the API keeps source IDs non-unique", "Ask: is the ID unique? can a revision reuse it?"),
-            ("Employees missing or <= 0", f"{missing('employees')} missing, {int((employees <= 0).sum())} zero or negative", "Rejected with a 422, never imputed (employees is the scoring denominator)", "Why is it missing; which source?"),
-            ("EBITDA mostly empty", f"{missing('annual_ebitda')} rows", "Not used by the score, kept null", "Will it be provided? It could enable better rules"),
-            ("Incorporation date", f"{missing('incorporation_date')} missing; {slash_dates} in dd/mm/yyyy, the rest ISO", "Normalised to ISO (day-first confirmed by the value ranges)", "Confirm the format, fix at source"),
-            ("Sector labels", f"{raw['sector'].str.strip().nunique()} spellings for 5 sectors", "Mapped to canonical labels; unknown ones flagged", "Agree a controlled vocabulary"),
-            ("Region labels", "Cataluna and Catalunya for the same region", "Merged", "Same"),
-            ("Implausible values", "e.g. 19 employees on 3,225 revenue", "Flagged, not changed", "Confirm units and currency"),
-            ("Tax ID punctuation and null tokens", "'null', 'N/A', spaces and dashes", "Normalised; tax ID kept out of logs and responses", "Standard format and null encoding"),
-        ], columns=["Issue", "What I found", "What the pipeline does", "Push back on the source"]),
-            width="stretch", hide_index=True)
+            ("Repeated IDs", f"{dup_rows} identical rows", "Dropped", "Is the ID unique?"),
+            ("Employees missing or ≤ 0", f"{missing('employees')} missing, {int((employees <= 0).sum())} zero/negative", "422, never imputed", "Why missing, which source?"),
+            ("EBITDA", f"{missing('annual_ebitda')} empty", "Unused by the score", "Will it be provided?"),
+            ("Dates", f"{missing('incorporation_date')} missing, {slash_dates} dd/mm/yyyy", "Normalised to ISO", "Fix format at source"),
+            ("Sector labels", f"{raw['sector'].str.strip().nunique()} spellings for 5 sectors", "Mapped", "Controlled vocabulary"),
+            ("Region labels", "Cataluna / Catalunya", "Merged", "Same"),
+            ("Implausible values", "19 employees, 3,225 revenue", "Flagged, unchanged", "Confirm units"),
+            ("Tax ID", "'null', 'N/A', dashes", "Normalised, never logged", "One null encoding"),
+        ], columns=["Issue", "Found", "Pipeline", "Push back"]), width="stretch", hide_index=True)
 
-        st.markdown("**Replaying all 196 raw rows through the same validation and scorer the API uses**")
+        st.markdown("**All rows replayed through the API's validation and scorer**")
         counts = replay_counts(raw)
-        cols = st.columns(3)
-        for col, (label, n) in zip(cols, counts.items()):
-            col.metric(label, n)
-        st.caption("The rejected rows are the ones with missing or non-positive employees, plus rows the request model refuses. "
-                   "The full profile is in analysis/data_exploration.ipynb.")
-        with st.expander("Raw sector and region spellings"):
-            x, y = st.columns(2)
-            x.dataframe(raw["sector"].str.strip().value_counts().rename("rows"), width="stretch")
-            y.dataframe(raw["region"].str.strip().value_counts().rename("rows"), width="stretch")
+        left, right = st.columns([1, 2])
+        for label, n in counts.items():
+            left.metric(label, n)
+        right.bar_chart(pd.Series(counts, name="rows"), horizontal=True)
 
-# ---------------------------------------------------------------- Try the API
+# ---------------------------------------------------------------- 2 Storage
+with tab_store:
+    st.markdown("**Schema**: `applications` 1 → many `score_history` (append-only)")
+    for col, table in zip(st.columns(2), Base.metadata.sorted_tables):
+        col.markdown(f"`{table.name}`")
+        col.dataframe(pd.DataFrame([{"column": c.name, "type": str(c.type),
+                                     "key": "PK" if c.primary_key else ("FK" if c.foreign_keys else ("unique" if c.unique else ""))}
+                                    for c in table.columns]), width="stretch", hide_index=True)
+    st.markdown("**Score three real rows, read them back, replay them**")
+    if st.button("Score and store RAW-0073, RAW-0043, RAW-0156", type="primary"):
+        codes = [send(SCENARIOS[k][0], True).status_code for k in ("Low-risk application", "High-risk application", "Employee count missing")]
+        st.caption(f"HTTP status codes {codes}: the 422 stores nothing.")
+    stored = [r for r in overview()["recent"] if r["application_id"].startswith("RAW-")]
+    if stored:
+        st.dataframe(replay_check(stored), width="stretch", hide_index=True)
+    else:
+        st.info("Nothing stored yet.")
+
+# ---------------------------------------------------------------- 3 API
 with tab_api:
-    st.markdown(
-        """
-<style>
-.op{display:flex;align-items:center;gap:12px;border:1px solid #49cc90;background:rgba(73,204,144,.1);
-border-radius:4px;padding:8px 12px;margin:4px 0 12px}
-.op .verb{background:#49cc90;color:#fff;font-weight:700;border-radius:3px;padding:4px 14px;font-size:14px}
-.op .path{font-family:monospace;font-weight:700;font-size:16px}
-.op .sum{opacity:.75;font-size:14px}
-</style>
-<div class="op"><span class="verb">POST</span><span class="path">/score</span><span class="sum">Score an application</span></div>
-""",
-        unsafe_allow_html=True,
-    )
-    st.caption(f"Calls go over HTTP to the real FastAPI service at `{API_URL}`: auth, validation, scoring, persistence, metrics. "
-               "The examples are rows from the export.")
-
-    left, right = st.columns([3, 2])
+    left, right = st.columns([2, 3])
     with left:
-        api_key = st.text_input("X-API-Key (header, required)", value=KEY, type="password",
-                                help="Same idea as Swagger's Authorize button. Try an empty or wrong key to see the 401.")
-        presets = {
-            **SAMPLES,
-            "Invalid: zero employees (422)": {"application_id": "DEMO-1005", "employees": 0, "annual_revenue": 1000000, "requested_amount": 100000},
-            "Invalid: extra field (422)": {"application_id": "DEMO-1006", "employees": 10, "annual_revenue": 1000000, "requested_amount": 100000, "tax_id": "H12345678"},
-        }
-        example = st.selectbox("Examples", list(presets))
-        body_text = st.text_area("Request body (application/json)", json.dumps(presets[example], indent=2),
-                                 height=230, key=f"body-{example}")
+        label = st.selectbox("Scenario", list(SCENARIOS))
+        body, with_key, expected = SCENARIOS[label]
+        body_text = st.text_area("POST /score", json.dumps(body, indent=2), height=220, key=f"body-{label}")
+        st.caption("X-API-Key sent" if with_key else "X-API-Key omitted")
         execute = st.button("Execute", type="primary")
     with right:
-        st.markdown("**Request body schema**")
-        st.dataframe(schema_table(), width="stretch", hide_index=True)
-        st.markdown("**Responses**")
-        st.dataframe(pd.DataFrame([
-            ("200", "Scored and stored: decision, risk_factors, ruleset_version, request_id"),
-            ("401", "Missing or invalid X-API-Key"),
-            ("422", "Validation failed; nothing stored, nothing imputed"),
-            ("503", "Score could not be recorded; no decision is returned"),
-        ], columns=["code", "meaning"]), width="stretch", hide_index=True)
-
-    if execute:
-        st.markdown("**Server response**")
-        try:
-            payload = json.loads(body_text)
-        except json.JSONDecodeError as exc:
-            st.error(f"Request body is not valid JSON: {exc}")
-        else:
-            response = client.post("/score", json=payload, headers={"X-API-Key": api_key})
-            compact = json.dumps(payload).replace("'", "'\\''")
-            st.markdown("Curl")
-            host = API_URL if EXTERNAL_API else "https://<your-host>"
-            st.code(f"curl -X POST '{host}/score' \\\n  -H 'X-API-Key: <key>' \\\n  -H 'Content-Type: application/json' \\\n  -d '{compact}'", language="bash")
-            c1, c2 = st.columns([1, 4])
-            c1.metric("Code", response.status_code)
-            c2.json(response.json())
-            if response.is_success:
-                out = response.json()
-                (st.error if out["decision"] == "high_risk" else st.success)(
-                    f"{out['decision']}  ·  factors: {', '.join(out['risk_factors']) or 'none'}  ·  ruleset {out['ruleset_version']}")
+        if execute:
+            try:
+                response = send(json.loads(body_text), with_key)
+            except json.JSONDecodeError as exc:
+                st.error(f"Invalid JSON: {exc}")
             else:
-                st.warning("Rejected: nothing was stored and no value was guessed.")
-            with st.expander("Response headers"):
-                st.json({k: v for k, v in response.headers.items() if k.lower() in ("content-type", "x-request-id")})
+                st.metric("Status", response.status_code)
+                st.json(response.json())
+    if st.button("Run all six scenarios"):
+        results = []
+        for name, (b, k, want) in SCENARIOS.items():
+            started = time.perf_counter()
+            r = send(b, k)
+            results.append({"": "✅" if r.status_code == want else "❌", "scenario": name, "expected": want, "got": r.status_code,
+                            "decision": r.json().get("decision", "") if r.is_success else "",
+                            "ms": round((time.perf_counter() - started) * 1000, 1)})
+        st.dataframe(pd.DataFrame(results), width="stretch", hide_index=True)
 
-    with st.expander("Other endpoints: GET /healthz, /metrics, /console/api/overview, /openapi.json"):
-        path = st.selectbox("GET", ["/healthz", "/metrics", "/console/api/overview", "/openapi.json"])
-        if st.button("Send GET request"):
-            got = client.get(path, headers={"X-API-Key": api_key})
-            st.metric("Code", got.status_code)
-            if "json" in got.headers.get("content-type", ""):
-                st.json(got.json(), expanded=False)
-            else:
-                st.code(got.text[:4000], language="text")
-
-    st.markdown("**Stored scores** (append-only `score_history` joined to `applications`, newest first)")
-    rows = overview()["recent"]
-    if rows:
-        st.dataframe(pd.DataFrame(rows).drop(columns=["image_version"]), width="stretch", hide_index=True)
-    else:
-        st.info("Nothing scored yet. Press Execute above.")
-    with st.expander("Live Prometheus metrics (`GET /metrics`)"):
-        text = client.get("/metrics", headers=HEADERS).text
-        st.code("\n".join(l for l in text.splitlines() if l.startswith(("score_", "shadow_", "http_requests_total"))), language="text")
-
-# ---------------------------------------------------------------- Rollout & monitoring
-with tab_ops:
-    st.subheader("1. Roll out a new ruleset safely (live)")
-    st.markdown(
-        f"Active `{ACTIVE}`. The candidate `{CANDIDATE}` raises the requested-amount ceiling from 20% to 25% of revenue. "
-        "It runs in **shadow** for every request (scored, recorded, never returned) and as a **50% canary** "
-        "that decides for half of application IDs, stable per ID."
-    )
-    n = st.slider("Synthetic applications to send", 50, 500, 200, step=50)
-    if st.button("Send synthetic traffic"):
+# ---------------------------------------------------------------- 4 Rollout
+with tab_roll:
+    st.caption(f"Active `{ACTIVE}` · candidate `{CANDIDATE}` runs in shadow on every request and as a 50% canary.")
+    if st.button("Send 200 synthetic applications", type="primary"):
         rng = random.Random()
         before = overview()["shadow"]
         diffs, progress = [], st.progress(0.0)
-        for i in range(n):
+        for i in range(200):
             employees = max(1, int(rng.lognormvariate(2.7, 0.9)))
             revenue = employees * rng.lognormvariate(11.2, 0.6)
             requested = revenue * rng.lognormvariate(-2.1, 0.7)
@@ -427,67 +316,41 @@ with tab_ops:
             new = score_application(ScoreRequest(**body), CANDIDATE).decision
             if old != new:
                 diffs.append({"application_id": body["application_id"], "ratio": round(requested / revenue, 3), "v1": old, "v2": new})
-            progress.progress((i + 1) / n)
+            progress.progress((i + 1) / 200)
         after = overview()["shadow"]
-        st.session_state["lab"] = {
-            "n": n, "diffs": diffs,
-            "shadow_runs": after["decisions"] - before["decisions"],
-            "shadow_disagreements": after["disagreements"] - before["disagreements"],
-        }
+        st.session_state["lab"] = {"diffs": diffs, "runs": after["decisions"] - before["decisions"],
+                                   "disagree": after["disagreements"] - before["disagreements"]}
     lab = st.session_state.get("lab")
     if lab:
         a, b, c = st.columns(3)
-        a.metric("Requests sent", lab["n"])
-        b.metric("Shadow runs recorded", int(lab["shadow_runs"]))
-        c.metric("Shadow disagreements", int(lab["shadow_disagreements"]),
-                 f"{lab['shadow_disagreements'] / max(lab['shadow_runs'], 1):.1%} of decisions", delta_color="off")
-        st.markdown("**Replay diff**: applications whose decision would change if the candidate were promoted")
-        if lab["diffs"]:
-            st.dataframe(pd.DataFrame(lab["diffs"]), width="stretch", hide_index=True)
-        else:
-            st.info("No decisions would change in this sample.")
-    split = pd.DataFrame(overview()["by_ruleset"])
-    if not split.empty:
-        st.markdown("**Decisions by ruleset arm** (all live traffic so far)")
-        st.bar_chart(split.pivot_table(index="ruleset", columns="decision", values="count", aggfunc="sum", fill_value=0))
-    st.caption("Rollback is changing `ACTIVE_RULESET`; an unknown ruleset name stops startup. Promotion and abort are manual.")
+        a.metric("Shadow runs", int(lab["runs"]))
+        b.metric("Decisions that would change", int(lab["disagree"]), f"{lab['disagree'] / max(lab['runs'], 1):.1%}", delta_color="off")
+        split = pd.DataFrame(overview()["by_ruleset"])
+        if not split.empty:
+            c.bar_chart(split.pivot_table(index="ruleset", columns="decision", values="count", aggfunc="sum", fill_value=0))
+        st.dataframe(pd.DataFrame(lab["diffs"]), width="stretch", hide_index=True)
+    st.markdown("**When Data Science sends a new prototype**")
+    st.dataframe(pd.DataFrame([
+        ("Ruleset (scoring function)", "Changes: new named version"),
+        ("Rollout", "Replay diff → shadow → canary → promote; rollback = set `ACTIVE_RULESET`"),
+        ("HTTP contract, validation, storage", "Unchanged"),
+        ("score_history", "Unchanged; every row keeps its ruleset version"),
+    ], columns=["Part", "Effect"]), width="stretch", hide_index=True)
 
-    st.divider()
-    st.subheader("2. Detect bad behaviour without repayment outcomes (recorded)")
+# ---------------------------------------------------------------- 5 Monitoring
+with tab_mon:
     snap = snapshot()
-    if not snap:
-        st.info("No snapshot bundled. Run `python scripts/capture_evidence.py --key <key>` against the running stack.")
-    else:
-        st.warning(f"Recording, not live. Captured {snap['captured_at']} from: {snap['stack']}.")
+    if snap:
         ov = snap["overview"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Scores in Postgres", ov["totals"]["scored"])
-        c2.metric("Postgres", ov["schema"].get("server_version") or "n/a")
-        c3.metric("Alembic revision", ov["schema"].get("revision") or "n/a")
-        c4.metric("Alertmanager", snap["alertmanager_status"].get("version", "n/a"))
-        st.markdown("**Prometheus alert rules**")
+        a, b, c, d = st.columns(4)
+        a.metric("Scores in Postgres", ov["totals"]["scored"])
+        b.metric("Postgres", ov["schema"].get("server_version") or "n/a")
+        c.metric("Alembic", ov["schema"].get("revision") or "n/a")
+        d.metric("Alertmanager", snap["alertmanager_status"].get("version", "n/a"))
         rules = [r for g in snap["prometheus_rules"]["groups"] for r in g["rules"]]
-        st.dataframe(pd.DataFrame([{
-            "alert": r["name"], "severity": r["labels"].get("severity"), "state": r["state"],
-            "summary": r["annotations"].get("summary"),
-        } for r in rules]), width="stretch", hide_index=True)
-        firing = snap["alertmanager_alerts"]
-        if firing:
-            st.caption("Alertmanager had an active alert when recorded: earlier test traffic skewed the high-risk share "
-                       "against the 24h baseline, so the drift alert fired. That is the detection working.")
-        with st.expander("Rows read back from Postgres, and the canary split"):
-            st.dataframe(pd.DataFrame(ov["recent"]).drop(columns=["image_version"]), width="stretch", hide_index=True)
-            st.dataframe(pd.DataFrame(ov["by_ruleset"]), width="stretch", hide_index=True)
-        with st.expander("Metric samples scraped from /metrics"):
-            st.code("\n".join(snap["metric_samples"]), language="text")
-
-    st.subheader("3. What is logged")
-    st.markdown(
-        "- **JSON logs, metadata only:** request ID, status, latency, decision, risk factors. Never raw values or `tax_id`.\n"
-        "- **`score_history` (append-only):** validated inputs, decision, factors, ruleset version, image version, request ID, timestamp, "
-        "so any decision can be replayed weeks later.\n"
-        "- **Metrics** carry the ruleset version and a bounded `source_system` label."
-    )
-    st.info("Alert delivery to Discord is deferred on purpose; the webhook is a placeholder. For production I would page on-call via "
-            "PagerDuty/Opsgenie, send tickets to chat, add a dead-man's-switch heartbeat, fire a test alert on every deploy and keep "
-            "the webhook in a secrets manager (see DESIGN.md, Monitoring).")
+        st.dataframe(pd.DataFrame([{"alert": r["name"], "severity": r["labels"].get("severity"), "state": r["state"],
+                                    "summary": r["annotations"].get("summary")} for r in rules]), width="stretch", hide_index=True)
+        st.caption(f"Recorded {snap['captured_at']} from the docker compose stack. The firing alert is the drift alert reacting to test traffic.")
+    st.markdown("**Live `/metrics`**")
+    text = client.get("/metrics", headers=HEADERS).text
+    st.code("\n".join(l for l in text.splitlines() if l.startswith(("score_", "shadow_", "http_requests_total"))), language="text")
